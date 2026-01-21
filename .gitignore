@@ -1,0 +1,85 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.dylib
+*.dll
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Maturin
+*.whl
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Data files (don't commit test data)
+*.rnx
+*.RNX
+*.obs
+*.OBS
+*.nav
+*.NAV
+*.sp3
+*.SP3
+*.gz
+*.Z
+!tests/data/**
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Output files
+*.csv
+*.json
+*.html
+!tests/data/**
