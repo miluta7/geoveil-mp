@@ -7,7 +7,6 @@ name = "geoveil-mp"
 version = "0.1.0"
 description = "High-performance GNSS multipath analysis library with Python bindings"
 readme = "README.md"
-license = {text = "MIT"}
 requires-python = ">=3.8"
 authors = [
     {name = "Miluta-Dulea Flueras", email = "miluta.flueras@cartografie.ro"}
@@ -82,7 +81,6 @@ features = ["python"]
 module-name = "geoveil_mp"
 bindings = "pyo3"
 strip = true
-compatibility = "manylinux2014"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
