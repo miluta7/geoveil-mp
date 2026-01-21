@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -86,7 +87,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
 
@@ -125,7 +126,7 @@ fn analyze_command(
     systems: Option<String>,
     plot: bool,
     csv: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     println!("{}", "GeoVeil-MP Multipath Analysis".bold().blue());
     println!("{}", "=".repeat(50));
 
@@ -233,7 +234,7 @@ fn analyze_command(
     Ok(())
 }
 
-fn info_command(file: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn info_command(file: PathBuf) -> Result<()> {
     println!("{}", "RINEX File Information".bold().blue());
     println!("{}", "=".repeat(50));
 
@@ -281,7 +282,7 @@ fn position_command(
     nav_path: PathBuf,
     epoch_str: Option<String>,
     system: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<()> {
     println!("{}", "Position Estimation".bold().blue());
     println!("{}", "=".repeat(50));
 
@@ -294,7 +295,7 @@ fn position_command(
         // Use first epoch
         obs_data.epochs.first()
             .map(|e| e.epoch)
-            .ok_or("No epochs in file")?
+            .context("No epochs in file")?
     };
 
     println!("  {} Position estimation requires navigation data", "Note:".yellow());

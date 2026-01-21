@@ -6,6 +6,7 @@
 //! 3. Run multipath analysis
 //! 4. Export results
 
+use anyhow::Result;
 use geoveil_mp::{
     prelude::*,
     RinexObsReader, Sp3Reader,
@@ -13,7 +14,7 @@ use geoveil_mp::{
     plotting::{PlotConfig, RPlotter},
 };
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<()> {
     println!("GeoVeil-MP Multipath Analysis Example");
     println!("======================================\n");
 
@@ -144,7 +145,7 @@ fn demonstrate_api() {
     println!("  Is phase: {}", code.is_phase());
     
     // Coordinate conversions
-    use geoveil_mp::utils::{Ecef, Geodetic, ecef_to_geodetic};
+    use geoveil_mp::utils::Ecef;
     
     let ecef = Ecef::new(4000000.0, 1000000.0, 4800000.0);
     let geo = ecef.to_geodetic();
