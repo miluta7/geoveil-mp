@@ -1,132 +1,63 @@
-# GeoVeil-MP Publishing Guide
+# Release Guide
 
-## 📦 Package Contents
+How to publish a new geoveil-mp version. Releases are fully automated by
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) —
+pushing a `v*` tag builds wheels for Linux/Windows/macOS × Python 3.9–3.12
+and publishes to PyPI via trusted publishing (no API token needed).
 
-The `geoveil-mp.tar.gz` contains a complete Rust+Python library ready for publishing.
+## Steps
 
-## 🚀 Publishing to GitHub
+1. **Bump versions** (keep them in sync):
+   - `Cargo.toml` → `version = "X.Y.Z"`
+   - `pyproject.toml` → `version = "X.Y.Z"`
 
-### 1. Create GitHub Repository
+2. **Update `CHANGELOG.md`** — add a `## [X.Y.Z] - YYYY-MM-DD` section
+   (Keep a Changelog format: Added / Changed / Fixed).
 
-```bash
-# Go to GitHub and create a new repository named "geoveil-mp"
-# URL: github.com/miluta7/geoveil-mp
-```
-
-### 2. Initialize Git and Push
-
-```bash
-# Extract the package
-tar -xzf geoveil-mp.tar.gz
-cd geoveil-mp
-
-# Initialize git
-git init
-git add .
-git commit -m "Initial release of GeoVeil-MP v0.1.0"
-
-# Add remote and push
-git remote add origin https://github.com/miluta7/geoveil-mp.git
-git branch -M main
-git push -u origin main
-```
-
-### 3. Create Release Tag
-
-```bash
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-```
-
-This will trigger the GitHub Actions workflow to build and publish wheels.
-
-## 📤 Publishing to PyPI
-
-### Option A: Automatic (via GitHub Actions)
-
-1. Set up PyPI secrets in GitHub:
-   - Go to Settings > Secrets > Actions
-   - Add `PYPI_API_TOKEN` with your PyPI API token
-   - Add `CRATES_IO_TOKEN` (optional, for crates.io)
-
-2. Push a version tag:
+3. **Test locally**:
    ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
+   cargo test
+   maturin build --release --features python
+   pip install --force-reinstall target/wheels/geoveil_mp-*.whl
+   python -c "import geoveil_mp as gm; print(gm.version())"
    ```
 
-3. GitHub Actions will automatically build and publish wheels.
+4. **Commit, tag, push**:
+   ```bash
+   git add -A
+   git commit -m "vX.Y.Z: <summary>"
+   git push origin main
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
 
-### Option B: Manual Publishing
+5. **CI does the rest**: `test` → `test-python` → `build-wheels` (12-wheel
+   matrix) → `publish` (PyPI, [pypi.org/project/geoveil-mp](https://pypi.org/project/geoveil-mp/)).
+   Watch progress under the repo's Actions tab (~15 min).
 
+6. **Create the GitHub Release**: Releases → Draft a new release → pick the
+   tag, summarize the changelog, mark as latest.
+
+## PyPI trusted publishing
+
+The `publish` job authenticates with an OIDC token
+(`permissions: id-token: write`, environment `pypi`) — configured once on
+PyPI under *Manage project → Publishing*. If publishing fails with an
+authentication error, re-check that the GitHub repository / workflow /
+environment names in the PyPI trusted-publisher settings still match.
+
+## crates.io (optional)
+
+The Rust crate is not currently published to crates.io. If desired:
 ```bash
-# Install dependencies
-pip install maturin twine
-
-# Build wheels
-maturin build --release --features python
-
-# Upload to PyPI
-twine upload target/wheels/*.whl
-
-# Or upload to TestPyPI first
-twine upload --repository testpypi target/wheels/*.whl
-```
-
-## 🦀 Publishing to crates.io
-
-```bash
-# Login to crates.io
-cargo login
-
-# Publish (dry-run first)
 cargo publish --dry-run
-
-# Publish for real
 cargo publish
 ```
 
-## ✅ Post-Publishing Verification
+## Versioning
 
-### Test PyPI Installation
-
-```bash
-pip install geoveil-mp
-python -c "import geoveil_mp as gm; print(gm.version())"
-```
-
-### Test Cargo Installation
-
-```bash
-cargo install geoveil_mp
-geoveil-mp --version
-```
-
-## 📋 Checklist
-
-- [ ] GitHub repository created at github.com/miluta7/geoveil-mp
-- [ ] Code pushed to GitHub
-- [ ] `PYPI_API_TOKEN` secret configured
-- [ ] `CRATES_IO_TOKEN` secret configured (optional)
-- [ ] Version tag pushed
-- [ ] GitHub Actions workflow completed
-- [ ] PyPI package verified
-- [ ] crates.io package verified (optional)
-
-## 🔗 Links
-
-After publishing, your package will be available at:
-
-- **GitHub**: https://github.com/miluta7/geoveil-mp
-- **PyPI**: https://pypi.org/project/geoveil-mp/
-- **crates.io**: https://crates.io/crates/geoveil-mp (if published)
-- **docs.rs**: https://docs.rs/geoveil-mp (automatic after crates.io)
-
-## 📝 Version Updates
-
-To release a new version:
-
-1. Update version in `Cargo.toml` and `pyproject.toml`
-2. Update `CHANGELOG.md`
-3. Commit and push changes
-4. Create and push new tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
+Semantic versioning: breaking Python-API changes bump the minor version
+while < 1.0 (0.1 → 0.2); patch releases for fixes. MP RMS values and
+statistics key formats (e.g. `GPSM1C`) are observable behavior for
+downstream consumers (GeoVeil batch) — call out any change to them in the
+changelog.
