@@ -20,6 +20,8 @@ Anubis/TEQC-style code multipath estimation for **every pseudorange observable**
 
 Part of the **GeoVeil** suite together with [geoveil-cn0](https://github.com/miluta7/geoveil-cn0) (CN0 signal quality and threat detection).
 
+**Live demo:** [batch.geoveil-rinex.eu](https://batch.geoveil-rinex.eu) — the GeoVeil batch dashboard runs this library in production: per-code MP RMS, cycle-slip counts, SNR-residual wavelet spectra, Fresnel zone maps, and long-term multipath trend monitoring on daily 30 s station data.
+
 ---
 
 ## Installation
