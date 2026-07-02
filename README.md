@@ -1,307 +1,214 @@
-# GeoVeil-MP: GNSS Multipath Analysis Library
+<div align="center">
+
+# geoveil-mp
+
+**GNSS code multipath analysis — Rust core, Python API**
 
 [![Crates.io](https://img.shields.io/crates/v/geoveil-mp.svg)](https://crates.io/crates/geoveil-mp)
 [![PyPI](https://img.shields.io/pypi/v/geoveil-mp.svg)](https://pypi.org/project/geoveil-mp/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/geoveil-mp.svg)](https://pypi.org/project/geoveil-mp/)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI/CD](https://github.com/miluta7/geoveil-mp/actions/workflows/ci.yml/badge.svg)](https://github.com/miluta7/geoveil-mp/actions)
 
-A high-performance Rust library for GNSS multipath analysis with Python bindings. Part of the **GeoVeil** suite for GNSS signal quality analysis.
+<img src="docs/mp_rms_by_signal.svg" width="880" alt="Code multipath RMS by signal — real 24 h / 30 s multi-GNSS data">
 
-## Features
+</div>
 
-- 🛰️ **RINEX Support**: Full support for RINEX v2.xx, v3.xx, and v4.xx observation files
-- 🌍 **Multi-GNSS**: GPS, GLONASS, Galileo, BeiDou, QZSS, NavIC/IRNSS, SBAS
-- 📡 **Navigation Data**: 
-  - Broadcast ephemerides (Keplerian elements)
-  - GLONASS state vector propagation (4th-order Runge-Kutta)
-  - SP3 precise orbit interpolation (Neville's algorithm)
-- 📊 **Multipath Analysis**: Code multipath estimation using linear combinations
-- ⚡ **Cycle Slip Detection**: Ionospheric residuals and code-phase combinations
-- 📍 **Position Estimation**: Least squares SPP with DOP calculation
-- 🎨 **Visualization**: R plotting integration for publication-quality figures
-- 🚀 **High Performance**: Parallel processing with Rayon, memory-mapped I/O
-- 🐍 **Python Bindings**: Full Python API via PyO3
+Anubis/TEQC-style code multipath estimation for **every pseudorange observable** in a RINEX file — per-code MP linear combinations, arc-wise ambiguity debiasing, interval-aware cycle-slip detection, and SNR series export. Built for continuous station monitoring on long time series of 1 s or 30 s data, following the methodology of Hunegnaw & Teferle (*Sensors* 2022).
+
+Part of the **GeoVeil** suite together with [geoveil-cn0](https://github.com/miluta7/geoveil-cn0) (CN0 signal quality and threat detection).
+
+---
 
 ## Installation
-
-### Python (PyPI)
 
 ```bash
 pip install geoveil-mp
 ```
 
-### Rust (Cargo)
+Pre-built wheels for Linux, Windows, and macOS — no Rust toolchain required.
 
 ```toml
+# Rust
 [dependencies]
-geoveil_mp = "0.1"
+geoveil_mp = "0.2"
 ```
 
-Or with all features:
-
-```toml
-[dependencies]
-geoveil_mp = { version = "0.1", features = ["full"] }
-```
-
-### From Source
-
-```bash
-# Clone the repository
-git clone https://github.com/miluta7/geoveil-mp.git
-cd geoveil-mp
-
-# Build Rust library
-cargo build --release
-
-# Build Python wheel
-pip install maturin
-maturin develop --release --features python
-```
+---
 
 ## Quick Start
-
-### Python Usage
 
 ```python
 import geoveil_mp as gm
 
-# Read RINEX observation file
-obs = gm.read_rinex_obs("observation.24o")
-print(f"Loaded {obs.num_epochs} epochs, {obs.num_satellites} satellites")
+obs = gm.read_rinex_obs("BOR100POL_R_20240010000_01D_30S_MO.rnx")
+print(obs.num_epochs, obs.num_satellites, obs.interval)   # 2880 104 30.0
 
-# Read SP3 precise ephemeris (optional, for accurate elevations)
-sp3 = gm.read_sp3("ephemeris.sp3")
-
-# Create analyzer with elevation cutoff
-analyzer = gm.MultipathAnalyzer(
-    obs,
-    elevation_cutoff=10.0,
-    systems=["G", "E", "R", "C"]  # GPS, Galileo, GLONASS, BeiDou
-)
-
-# Run multipath analysis
+analyzer = gm.MultipathAnalyzer(obs, elevation_cutoff=10.0, systems=["G", "R", "E", "C"])
 results = analyzer.analyze()
 
-# Compute satellite elevations from SP3
-if sp3 and obs.approx_position:
-    computed, failed = results.compute_elevations(sp3, obs.approx_position)
-    print(f"Elevations: {computed} computed, {failed} failed")
+# One statistics row per signal code: GPSM1C, GPSM2W, GALM8X, GLOM1P, BDSM2I, ...
+for s in sorted(results.statistics, key=lambda s: s.signal):
+    print(f"{s.signal}  rms={s.rms:.3f} m  n={s.count}  slips={s.cycle_slips}")
 
-# Access results
-print(f"Total estimates: {results.total_estimates()}")
-print(f"Cycle slips detected: {results.total_cycle_slips()}")
+# Cycle slips, counted per carrier-phase signal
+print(results.cycle_slip_counts)          # {'GPSL1C': 210, 'GPSL2W': 168, ...}
 
-# Print statistics by signal
-for stat in results.statistics:
-    print(f"{stat.signal}: RMS={stat.rms:.4f}m, Count={stat.count}")
+# Attach precise elevations from SP3 (recomputes elevation-weighted RMS)
+sp3 = gm.read_sp3("COD0MGXFIN_20240010000_01D_05M_ORB.SP3")
+computed, failed = results.compute_elevations(sp3, obs.approx_position)
 
-# Export to CSV
-import pandas as pd
-data = [{
-    'satellite': e.satellite,
-    'epoch': e.epoch,
-    'mp_value': e.mp_value,
-    'elevation': e.elevation,
-    'signal': e.signal
-} for e in results.estimates]
-df = pd.DataFrame(data)
-df.to_csv("multipath_results.csv", index=False)
+# SNR time series per satellite and S-code (for SNR-residual multipath analysis)
+for series in obs.get_snr_series("G07"):
+    print(series.code, len(series), series.values[:3])
 ```
 
-### Rust Usage
+<div align="center">
+<img src="docs/mp_series.svg" width="880" alt="Debiased MP series for one satellite — the oscillation is site multipath">
+</div>
 
-```rust
-use geoveil_mp::{
-    prelude::*,
-    RinexObsReader, Sp3Reader,
-    navigation::SatellitePositionProvider,
-};
+---
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Read RINEX observation file
-    let obs_data = RinexObsReader::new().read("observation.24o")?;
-    
-    // Read SP3 precise ephemeris
-    let sp3_data = Sp3Reader::read("ephemeris.sp3")?;
-    
-    // Configure analysis
-    let config = AnalysisConfig::default()
-        .with_elevation_cutoff(10.0)
-        .with_systems(&["G", "E", "R", "C"]);
-    
-    // Run multipath analysis
-    let analyzer = MultipathAnalyzer::new(obs_data, config);
-    let results = analyzer.analyze()?;
-    
-    // Export results
-    results.to_csv("results.csv")?;
-    
-    // Print statistics
-    for (signal, stats) in &results.statistics {
-        println!("{}: RMS={:.4}m, Count={}", signal, stats.rms, stats.count);
-    }
-    
-    Ok(())
-}
+## What it computes
+
+### Per-code multipath combinations
+
+For every pseudorange code observable `P_k` (C1C, C1X, C2W, C2X, C5X, ...), the ionosphere-free, geometry-free multipath combination is formed with two carrier phases:
+
+```
+MP_k = P_k − (1 + 2/(α−1))·Φ_i + (2/(α−1))·Φ_j        α = (f_i / f_j)²
 ```
 
-## CLI Usage
+- `Φ_i` — phase on the code's own band; `Φ_j` — phase on a partner band chosen from a deterministic per-system priority list
+- GLONASS FDMA frequencies use the per-satellite channel numbers from the RINEX header
+- The phase-ambiguity bias is removed **per continuous arc**: whole-arc mean for short arcs, centered moving average (default 1500 s) for long ones
+- Arcs reset at data gaps, cycle slips, and MP jumps — slips never smear into the RMS
+
+Signals are named in the convention used by GNSS monitoring literature: `GPSM1C`, `GPSM2W`, `GLOM1P`, `GALM8X`, `BDSM2I`.
+
+### Cycle-slip detection
+
+Three detectors, thresholds that scale with the sampling interval (`|Δ| > base + rate·dt`):
+
+| Method | Test | Default threshold |
+|--------|------|-------------------|
+| Geometry-free | ΔGF per phase code vs. reference band | 0.10 m + 0.003·dt |
+| Code-phase | Δ(Φ − P) per code | 5.0 m + 0.10·dt |
+| LLI | RINEX loss-of-lock flags (phase only) | — |
+
+At 30 s sampling this detects single-cycle L1 slips (GF signature ≈ 0.29 m vs. threshold 0.19 m) — rate-based thresholds tuned for 1 s data cannot. Slips are attributed and counted per signal code (`GPSL2W`, `GLOL1C`, ...).
+
+### SNR series export
+
+`RinexObsData.get_snr_series(satellite, code=None)` returns per-S-code time series (unix-second timestamps, dB-Hz values) — the input for SNR-residual multipath analysis (polynomial detrending, wavelet spectra) without re-parsing the file.
+
+---
+
+## Results on real data
+
+24 h of BOR1 (EPN, Poland) 30 s multi-GNSS RINEX 3, default settings:
+
+| Constellation | Best signal | RMS | Worst signal | RMS |
+|---------------|------------|-----|--------------|-----|
+| Galileo | E5 AltBOC (M8X) | 0.165 m | E5b (M7X) | 0.395 m |
+| GPS | L2C (M2X) | 0.312 m | L1 C/A (M1C) | 0.342 m |
+| BeiDou | B2I (M7I) | 0.295 m | B3I (M6I) | 0.354 m |
+| GLONASS | L2 P (M2P) | 0.318 m | L1 C/A (M1C) | 0.566 m |
+
+The ranking (Galileo AltBOC best, GLONASS C/A worst) reproduces published station-monitoring results. Parsing the file takes ~0.4 s; the full 15-signal analysis with slip detection ~1.4 s (306 k estimates).
+
+---
+
+## Analyzer options
+
+```python
+gm.MultipathAnalyzer(
+    obs,
+    elevation_cutoff=10.0,        # degrees; applied when elevations are known
+    systems=["G", "R", "E", "C"], # G R E C J S I
+    bias_window_seconds=1500.0,   # moving-average window; None = whole-arc mean
+    min_arc_seconds=300.0,        # drop shorter arcs
+    arc_gap_factor=5.0,           # arc break at gap > factor × interval
+    include_codes=["C1C", "GC5X"],# restrict codes ("C1C" any system, "GC5X" GPS only)
+    exclude_codes=[],
+    max_epochs=None,              # uniform decimation guard for huge files
+    detect_cycle_slips=True,
+    ion_delta_base=0.10, ion_delta_rate=0.003,   # GF slip threshold (m, m/s)
+    cp_delta_base=5.0,   cp_delta_rate=0.10,     # code-phase slip threshold
+)
+```
+
+---
+
+## API surface
+
+| Object | Key members |
+|--------|-------------|
+| `RinexObsData` | `num_epochs`, `num_satellites`, `interval`, `marker_name`, `approx_position`, `satellites()`, `observation_types(sys)`, `glonass_fcn()`, `snr_codes(sat)`, `get_snr_series(sat, code=None)` |
+| `MultipathAnalyzer` | `analyze()` → `AnalysisResults` |
+| `AnalysisResults` | `estimates`, `statistics`, `cycle_slips`, `cycle_slip_counts`, `total_estimates()`, `total_cycle_slips()`, `compute_elevations(sp3, receiver)` |
+| `MultipathEstimate` | `satellite`, `system`, `signal` (`"C1C"`), `epoch`, `mp_value`, `elevation`, `azimuth`, `snr` |
+| `MultipathStats` | `signal` (`"GPSM1C"`), `system`, `code`, `count`, `rms`, `weighted_rms`, `mean`, `std_dev`, `min`, `max`, `cycle_slips` |
+| `CycleSlip` | `satellite`, `epoch`, `signal`, `system`, `magnitude`, `threshold`, `method` (`"gf"`, `"code_phase"`, `"lli"`) |
+| `SnrSeries` | `satellite`, `system`, `code`, `times`, `values`, `epochs_iso()` |
+| `Sp3Data` | `satellites()`, `get_position(sat, epoch)`, `num_epochs`, `interval` |
+| Functions | `read_rinex_obs`, `read_rinex_obs_bytes`, `read_sp3`, `calculate_azel`, `compute_elevation`, `get_frequency`, `get_wavelength`, `version` |
+
+Supported input: RINEX v2 / v3 / v4 observation files, SP3-c/d orbits, broadcast ephemerides (Keplerian + GLONASS RK4).
+
+---
+
+## Pipeline
+
+```mermaid
+flowchart LR
+    A[RINEX v2/v3/v4] --> B[Parse<br/>code + phase + SNR]
+    B --> C[Per-code combos<br/>deterministic phase pairing]
+    B --> D[Cycle-slip detection<br/>GF · code-phase · LLI]
+    D --> E[Arc splitting]
+    C --> E
+    E --> F[Ambiguity debiasing<br/>mean / moving average]
+    F --> G[Per-signal statistics<br/>RMS · weighted RMS]
+    H[SP3 orbits] -.-> I[Elevations / azimuths]
+    I -.-> G
+```
+
+---
+
+## CLI
 
 ```bash
-# Analyze RINEX file with SP3 orbits
-geoveil-mp analyze --obs observation.24o --sp3 ephemeris.sp3 --csv results.csv
-
-# Get file information
-geoveil-mp info observation.24o
-
-# Estimate position from pseudoranges
-geoveil-mp position --obs observation.24o --nav navigation.24n
+geoveil-mp analyze --obs station.rnx --sp3 orbits.sp3 --elevation 10 --output results/
+geoveil-mp info --obs station.rnx
 ```
 
-## Multipath Estimation
-
-The code multipath is estimated using the linear combination:
-
-$$MP_1 = R_1 - \left(1+\frac{2}{\alpha - 1}\right)\Phi_1 + \left(\frac{2}{\alpha - 1}\right)\Phi_2$$
-
-where:
-- $R_1$ is the code observation on frequency 1
-- $\Phi_1, \Phi_2$ are phase observations on frequencies 1 and 2  
-- $\alpha = f_1^2/f_2^2$ is the frequency ratio squared
-
-This combination eliminates ionospheric delay and geometry, leaving only code multipath, code noise, and ambiguity-related biases.
-
-## Supported GNSS Systems
-
-| System | Code | Frequencies | Navigation |
-|--------|------|-------------|------------|
-| GPS | G | L1, L2, L5 | Keplerian |
-| GLONASS | R | G1, G2, G3 | State Vector (RK4) |
-| Galileo | E | E1, E5a, E5b, E6 | Keplerian |
-| BeiDou | C | B1I, B1C, B2a, B2b, B3I | Keplerian |
-| QZSS | J | L1, L2, L5, L6 | Keplerian |
-| NavIC | I | L5, S, L1 | Keplerian |
-| SBAS | S | L1, L5 | - |
-
-## Data Sources
-
-### SP3 Precise Orbits (No Authentication Required)
-
-```
-ESA:  http://navigation-office.esa.int/products/gnss-products/{week}/
-GFZ:  https://igs.bkg.bund.de/root_ftp/IGS/products/mgex/{week}/
-CODE: https://igs.bkg.bund.de/root_ftp/IGS/products/mgex/{week}/
-```
-
-### Broadcast Navigation
-
-```
-BKG:  https://igs.bkg.bund.de/root_ftp/IGS/BRDC/{year}/{doy}/
-IGN:  https://igs.ign.fr/pub/igs/data/{year}/{doy}/
-```
-
-## Python API Reference
-
-### Classes
-
-| Class | Description |
-|-------|-------------|
-| `GnssSystem` | GNSS constellation identifier (G, R, E, C, J, I, S) |
-| `Satellite` | Satellite PRN identifier (e.g., "G01", "E11") |
-| `Epoch` | Time representation with GPS/Julian conversions |
-| `Ecef` | Earth-Centered Earth-Fixed coordinates |
-| `Geodetic` | Latitude/Longitude/Height coordinates |
-| `RinexObsData` | RINEX observation data container |
-| `Sp3Data` | SP3 precise orbit data container |
-| `MultipathAnalyzer` | Main multipath analysis engine |
-| `AnalysisResults` | Analysis results container |
-
-### Functions
-
-| Function | Description |
-|----------|-------------|
-| `read_rinex_obs(path)` | Read RINEX observation file |
-| `read_rinex_obs_bytes(data, filename)` | Read RINEX from bytes |
-| `read_sp3(path)` | Read SP3 precise orbit file |
-| `get_frequency(system, band, fcn)` | Get signal frequency (Hz) |
-| `get_wavelength(system, band, fcn)` | Get signal wavelength (m) |
-| `calculate_azel(receiver, satellite)` | Compute azimuth/elevation |
-| `compute_elevation(sp3, receiver, sat, epoch)` | Compute elevation from SP3 |
-| `version()` | Get library version |
-
-### Constants
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `SPEED_OF_LIGHT` | 299792458.0 | Speed of light (m/s) |
-| `GM_WGS84` | 3.986005e14 | Earth gravitational parameter (m³/s²) |
-| `EARTH_RADIUS` | 6378137.0 | WGS84 Earth radius (m) |
-
-## Architecture
-
-```
-geoveil_mp/
-├── src/
-│   ├── lib.rs              # Library entry point
-│   ├── python.rs           # Python bindings (PyO3)
-│   ├── rinex/              # RINEX parsing
-│   │   ├── types.rs        # Data structures
-│   │   └── obs_reader.rs   # Observation file reader
-│   ├── navigation/         # Ephemeris handling
-│   │   ├── types.rs        # Ephemeris types
-│   │   ├── kepler2ecef.rs  # Keplerian to ECEF
-│   │   ├── glonass.rs      # GLONASS Runge-Kutta
-│   │   └── sp3.rs          # SP3 Neville interpolation
-│   ├── analysis/           # Analysis algorithms
-│   │   ├── multipath.rs    # Multipath estimation
-│   │   ├── cycle_slip.rs   # Cycle slip detection
-│   │   └── position.rs     # Position estimation
-│   ├── plotting/           # R integration
-│   └── utils/              # Utilities
-│       ├── constants.rs    # Physical constants
-│       ├── coordinates.rs  # Coordinate transforms
-│       ├── time.rs         # Time handling
-│       └── error.rs        # Error types
-├── examples/
-├── tests/
-└── r_scripts/              # R plotting scripts
-```
-
-## Performance
-
-Benchmarks on a typical 24-hour multi-GNSS RINEX file (~100MB):
-
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Read RINEX 3.05 | ~500ms | Memory-mapped I/O |
-| Read SP3 | ~50ms | Neville interpolation ready |
-| Multipath analysis | ~200ms | Parallel processing |
-| Position estimation | ~2s | All epochs |
-
-## Related Projects
-
-- **[geoveil-cn0](https://github.com/miluta7/geoveil-cn0)**: CN0 (carrier-to-noise ratio) analysis and interference detection
-- **[GNSS_Multipath_Analysis_Software](https://github.com/paarnes/GNSS_Multipath_Analysis_Software)**: Original Python implementation (inspiration)
+---
 
 ## References
 
-- RINEX 4.02 Specification (IGS/RTCM)
-- GPS Interface Control Document (IS-GPS-200)
-- GLONASS Interface Control Document (ICD-GLONASS)
-- Galileo OS-SDD (Open Service Signal-in-Space ICD)
-- IGS Multi-GNSS Experiment (MGEX)
+- Hunegnaw, A.; Teferle, F.N. *Evaluation of the Multipath Environment Using Electromagnetic-Absorbing Materials at Continuous GNSS Stations.* Sensors 2022, 22, 3384.
+- Estey, L.H.; Meertens, C.M. *TEQC: The Multi-Purpose Toolkit for GPS/GLONASS Data.* GPS Solutions 1999, 3, 42–49.
+- Václavovic, P.; Douša, J. *G-Nut/Anubis: Open-Source Tool for Multi-GNSS Data Monitoring.* IAG Symposia 2016, 143.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
-## Contributing
+## Author
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+**Miluta Dulea-Flueras** — [miluta.flueras@cartografie.ro](mailto:miluta.flueras@cartografie.ro)
 
-## Changelog
+## Citation
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
+```bibtex
+@software{geoveil_mp,
+  author  = {Dulea-Flueras, Miluta},
+  title   = {geoveil-mp: GNSS Code Multipath Analysis Library},
+  year    = {2026},
+  version = {0.2.0},
+  url     = {https://github.com/miluta7/geoveil-mp},
+  license = {MIT}
+}
+```

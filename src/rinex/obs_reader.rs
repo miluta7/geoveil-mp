@@ -298,11 +298,16 @@ impl RinexObsReader {
 
     /// Parse GLONASS slot/frequency mapping
     fn parse_glonass_slot_frq(&self, line: &str, header: &mut Header) {
-        // Format: num slots, then slot/frq pairs
+        // First line: "24 R01  1 R02 -4 ..."; continuation lines start
+        // directly with a slot: "   R09 -2 R10 -7 ..."
         let content = &line[0..60.min(line.len())];
         let parts: Vec<&str> = content.split_whitespace().collect();
-        
-        let mut i = 1; // Skip count
+
+        let mut i = if parts.first().map(|p| p.starts_with('R')).unwrap_or(false) {
+            0 // continuation line, no leading count
+        } else {
+            1 // skip count
+        };
         while i + 1 < parts.len() {
             if let (Ok(slot), Ok(frq)) = (
                 parts[i].trim_start_matches('R').parse::<u32>(),
@@ -757,5 +762,28 @@ mod tests {
         let sat = Satellite::parse("G15").unwrap();
         assert_eq!(sat.system, GnssSystem::Gps);
         assert_eq!(sat.prn, 15);
+    }
+
+    #[test]
+    fn test_glonass_slot_frq_continuation_lines() {
+        // 24 slots span 3 header lines; continuation lines have no count
+        let reader = RinexObsReader::new();
+        let mut header = Header::default();
+        reader.parse_glonass_slot_frq(
+            " 24 R01  1 R02 -4 R03  5 R04  6 R05  1 R06 -4 R07  5 R08  6 ",
+            &mut header,
+        );
+        reader.parse_glonass_slot_frq(
+            "    R09 -2 R10 -7 R11  0 R12 -1 R13 -2 R14 -7 R15  0 R16 -1 ",
+            &mut header,
+        );
+        reader.parse_glonass_slot_frq(
+            "    R17  4 R18 -3 R19  3 R20  2 R21  4 R22 -3 R23  3 R24  2 ",
+            &mut header,
+        );
+        assert_eq!(header.glonass_slot_frq.len(), 24);
+        assert_eq!(header.glonass_slot_frq.get(&9), Some(&-2));
+        assert_eq!(header.glonass_slot_frq.get(&10), Some(&-7));
+        assert_eq!(header.glonass_slot_frq.get(&24), Some(&2));
     }
 }

@@ -140,6 +140,20 @@ impl GnssSystem {
         }
     }
 
+    /// Get 3-letter IGS-style abbreviation (used in MP signal names, e.g. GPSM1C)
+    pub fn abbrev(&self) -> &'static str {
+        match self {
+            GnssSystem::Gps => "GPS",
+            GnssSystem::Glonass => "GLO",
+            GnssSystem::Galileo => "GAL",
+            GnssSystem::Beidou => "BDS",
+            GnssSystem::Qzss => "QZS",
+            GnssSystem::Sbas => "SBS",
+            GnssSystem::Navic => "IRN",
+            GnssSystem::Mixed => "MIX",
+        }
+    }
+
     /// Get all concrete systems (excluding Mixed)
     pub fn all() -> &'static [GnssSystem] {
         &[
@@ -456,10 +470,44 @@ impl ObservationData {
         if self.epochs.len() < 2 {
             return self.header.interval;
         }
-        
+
         // Calculate from first two epochs
         let diff = self.epochs[1].epoch.diff(&self.epochs[0].epoch);
         Some(diff.abs())
+    }
+
+    /// Robust sampling interval: median of consecutive epoch spacings over the
+    /// first ≤101 epochs, falling back to the header value. Unlike `interval()`,
+    /// a data gap right at the start does not skew the result.
+    pub fn sampling_interval(&self) -> Option<f64> {
+        if self.epochs.len() < 2 {
+            return self.header.interval;
+        }
+        let n = self.epochs.len().min(101);
+        let mut diffs: Vec<f64> = self.epochs[..n]
+            .windows(2)
+            .map(|w| w[1].epoch.diff(&w[0].epoch).abs())
+            .filter(|d| *d > 1e-6)
+            .collect();
+        if diffs.is_empty() {
+            return self.header.interval;
+        }
+        diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        Some(diffs[diffs.len() / 2])
+    }
+
+    /// Count observations per (satellite, signal code) in a single pass.
+    /// Used for deterministic MP phase pairing and SNR-code discovery.
+    pub fn observed_code_counts(&self) -> HashMap<(Satellite, SignalCode), usize> {
+        let mut counts: HashMap<(Satellite, SignalCode), usize> = HashMap::new();
+        for epoch in &self.epochs {
+            for (sat, obs) in &epoch.satellites {
+                for code in obs.keys() {
+                    *counts.entry((*sat, code.clone())).or_insert(0) += 1;
+                }
+            }
+        }
+        counts
     }
 
     /// Get time span in seconds

@@ -365,6 +365,19 @@ impl Epoch {
         let dt = self.to_datetime();
         dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
     }
+
+    /// Convert to Unix seconds (in the file's native time scale, typically GPS,
+    /// labeled as UTC — no leap-second correction applied)
+    pub fn to_unix_seconds(&self) -> f64 {
+        let dt = self.to_datetime();
+        dt.timestamp() as f64 + dt.timestamp_subsec_nanos() as f64 * 1e-9
+    }
+
+    /// Convert to Unix milliseconds (i64) for compact epoch indexing
+    pub fn to_unix_ms(&self) -> i64 {
+        let dt = self.to_datetime();
+        dt.timestamp_millis()
+    }
 }
 
 impl fmt::Display for Epoch {

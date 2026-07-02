@@ -14,7 +14,9 @@ pub use multipath::{
     MultipathAnalyzer, MultipathEstimate, MultipathStatistics,
     AnalysisConfig, AnalysisResults, SummaryStatistics,
 };
-pub use cycle_slip::{CycleSlipDetector, CycleSlip, CycleSlipMethod};
+pub use cycle_slip::{
+    CycleSlipDetector, CycleSlip, CycleSlipMethod, SlipSummary, SlipThresholds,
+};
 pub use position::{PositionEstimator, PositionSolution, PositionStatistics};
 
 /// Re-export commonly used types

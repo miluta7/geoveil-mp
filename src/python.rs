@@ -15,6 +15,11 @@ use pyo3::exceptions::{PyValueError, PyIOError};
 use std::collections::HashMap;
 #[cfg(feature = "python")]
 use std::path::Path;
+#[cfg(feature = "python")]
+use std::sync::Arc;
+
+#[cfg(feature = "python")]
+use crate::analysis::{AnalysisConfig, MultipathAnalyzer, SlipThresholds};
 
 // Import from our crate
 #[cfg(feature = "python")]
@@ -263,7 +268,7 @@ impl PyGeodetic {
 #[cfg(feature = "python")]
 #[pyclass(name = "RinexObsData")]
 pub struct PyRinexObsData {
-    pub(crate) inner: ObservationData,
+    pub(crate) inner: Arc<ObservationData>,
 }
 
 #[cfg(feature = "python")]
@@ -350,6 +355,74 @@ impl PyRinexObsData {
         }
         counts
     }
+
+    /// S-codes with data for a satellite (e.g. ["S1C", "S2W"])
+    fn snr_codes(&self, satellite: &str) -> PyResult<Vec<String>> {
+        let sat = Satellite::parse(satellite)
+            .ok_or_else(|| PyValueError::new_err(format!("Invalid satellite id '{satellite}'")))?;
+        let mut codes: Vec<String> = self
+            .inner
+            .epochs
+            .iter()
+            .filter_map(|e| e.satellites.get(&sat))
+            .flat_map(|obs| obs.keys().filter(|c| c.is_snr()).map(|c| c.to_string()))
+            .collect();
+        codes.sort();
+        codes.dedup();
+        Ok(codes)
+    }
+
+    /// SNR time series for one satellite: one SnrSeries per S-code, or only
+    /// the requested code. Times are unix seconds in the file's time scale.
+    #[pyo3(signature = (satellite, code=None))]
+    fn get_snr_series(&self, satellite: &str, code: Option<String>) -> PyResult<Vec<PySnrSeries>> {
+        let sat = Satellite::parse(satellite)
+            .ok_or_else(|| PyValueError::new_err(format!("Invalid satellite id '{satellite}'")))?;
+        let wanted: Option<SignalCode> = match code {
+            Some(c) => Some(
+                SignalCode::parse(&c.to_ascii_uppercase())
+                    .filter(|sc| sc.is_snr())
+                    .ok_or_else(|| PyValueError::new_err(format!("'{c}' is not an S-code")))?,
+            ),
+            None => None,
+        };
+
+        let mut series: HashMap<SignalCode, (Vec<f64>, Vec<f64>)> = HashMap::new();
+        for epoch_obs in &self.inner.epochs {
+            let obs = match epoch_obs.satellites.get(&sat) {
+                Some(o) => o,
+                None => continue,
+            };
+            let t = epoch_obs.epoch.to_unix_seconds();
+            for (c, v) in obs.iter().filter(|(c, _)| c.is_snr()) {
+                if let Some(w) = &wanted {
+                    if c != w {
+                        continue;
+                    }
+                }
+                if v.value <= 0.0 {
+                    continue;
+                }
+                let entry = series.entry(c.clone()).or_default();
+                entry.0.push(t);
+                entry.1.push(v.value);
+            }
+        }
+
+        let sys = sat.system.to_char().to_string();
+        let mut out: Vec<PySnrSeries> = series
+            .into_iter()
+            .map(|(c, (times, values))| PySnrSeries {
+                satellite: satellite.to_string(),
+                system: sys.clone(),
+                code: c.to_string(),
+                times,
+                values,
+            })
+            .collect();
+        out.sort_by(|a, b| a.code.cmp(&b.code));
+        Ok(out)
+    }
     
     fn __repr__(&self) -> String {
         format!("RinexObsData(version={}, marker='{}', epochs={}, sats={})",
@@ -404,6 +477,12 @@ pub struct PyMultipathStats {
     pub max: f64,
     #[pyo3(get)]
     pub weighted_rms: f64,
+    #[pyo3(get)]
+    pub system: String,
+    #[pyo3(get)]
+    pub code: String,
+    #[pyo3(get)]
+    pub cycle_slips: usize,
 }
 
 #[cfg(feature = "python")]
@@ -428,6 +507,12 @@ pub struct PyCycleSlip {
     pub magnitude: f64,
     #[pyo3(get)]
     pub method: String,
+    #[pyo3(get)]
+    pub signal: String,
+    #[pyo3(get)]
+    pub system: String,
+    #[pyo3(get)]
+    pub threshold: f64,
 }
 
 /// Python-exposed Analysis results
@@ -440,6 +525,8 @@ pub struct PyAnalysisResults {
     pub statistics: Vec<PyMultipathStats>,
     #[pyo3(get)]
     pub cycle_slips: Vec<PyCycleSlip>,
+    #[pyo3(get)]
+    pub cycle_slip_counts: HashMap<String, usize>,
 }
 
 #[cfg(feature = "python")]
@@ -500,7 +587,31 @@ impl PyAnalysisResults {
                 failed += 1;
             }
         }
-        
+
+        // Recompute elevation-weighted RMS now that real elevations exist
+        if computed > 0 {
+            let mut acc: HashMap<String, (f64, f64)> = HashMap::new(); // key -> (Σw·mp², Σw)
+            for est in &self.estimates {
+                let abbrev = crate::rinex::GnssSystem::from_char(
+                    est.system.chars().next().unwrap_or('G'),
+                )
+                .map(|s| s.abbrev())
+                .unwrap_or("GPS");
+                let key = format!("{}M{}", abbrev, &est.signal[1..]);
+                let w = crate::utils::elevation_weight(est.elevation);
+                let e = acc.entry(key).or_insert((0.0, 0.0));
+                e.0 += w * est.mp_value * est.mp_value;
+                e.1 += w;
+            }
+            for stat in &mut self.statistics {
+                if let Some((sw, w)) = acc.get(&stat.signal) {
+                    if *w > 0.0 {
+                        stat.weighted_rms = (sw / w).sqrt();
+                    }
+                }
+            }
+        }
+
         (computed, failed)
     }
     
@@ -516,17 +627,36 @@ impl PyAnalysisResults {
 #[cfg(feature = "python")]
 #[pyclass(name = "MultipathAnalyzer")]
 pub struct PyMultipathAnalyzer {
-    obs_data: ObservationData,
-    elevation_cutoff: f64,
-    systems: Vec<GnssSystem>,
+    obs_data: Arc<ObservationData>,
+    config: AnalysisConfig,
 }
 
 #[cfg(feature = "python")]
 #[pymethods]
 impl PyMultipathAnalyzer {
     #[new]
-    #[pyo3(signature = (obs_data, elevation_cutoff=10.0, systems=None))]
-    fn new(obs_data: &PyRinexObsData, elevation_cutoff: f64, systems: Option<Vec<String>>) -> Self {
+    #[pyo3(signature = (obs_data, elevation_cutoff=10.0, systems=None,
+        bias_window_seconds=1500.0, min_arc_seconds=300.0, arc_gap_factor=5.0,
+        include_codes=None, exclude_codes=None, max_epochs=None,
+        detect_cycle_slips=true, ion_delta_base=0.10, ion_delta_rate=0.003,
+        cp_delta_base=5.0, cp_delta_rate=0.10))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        obs_data: &PyRinexObsData,
+        elevation_cutoff: f64,
+        systems: Option<Vec<String>>,
+        bias_window_seconds: Option<f64>,
+        min_arc_seconds: f64,
+        arc_gap_factor: f64,
+        include_codes: Option<Vec<String>>,
+        exclude_codes: Option<Vec<String>>,
+        max_epochs: Option<usize>,
+        detect_cycle_slips: bool,
+        ion_delta_base: f64,
+        ion_delta_rate: f64,
+        cp_delta_base: f64,
+        cp_delta_rate: f64,
+    ) -> PyResult<Self> {
         let systems = systems.map(|s| {
             s.iter()
                 .filter_map(|c| GnssSystem::from_char(c.chars().next()?))
@@ -537,234 +667,182 @@ impl PyMultipathAnalyzer {
             GnssSystem::Galileo,
             GnssSystem::Beidou,
         ]);
-        
-        Self {
-            obs_data: obs_data.inner.clone(),
+
+        // Validate code filters: "C1C" (all systems) or "GC1C" (one system)
+        let validate = |list: &Option<Vec<String>>, name: &str| -> PyResult<Vec<String>> {
+            let mut out = Vec::new();
+            if let Some(items) = list {
+                for item in items {
+                    let it = item.trim().to_ascii_uppercase();
+                    let code_part = match it.len() {
+                        3 => it.as_str(),
+                        4 => &it[1..],
+                        _ => {
+                            return Err(PyValueError::new_err(format!(
+                                "{name} entry '{item}' must be a 3-char code ('C1C') or system+code ('GC1C')"
+                            )))
+                        }
+                    };
+                    if SignalCode::parse(code_part).is_none() {
+                        return Err(PyValueError::new_err(format!(
+                            "{name} entry '{item}' is not a valid signal code"
+                        )));
+                    }
+                    if it.len() == 4 && GnssSystem::from_char(it.chars().next().unwrap()).is_none() {
+                        return Err(PyValueError::new_err(format!(
+                            "{name} entry '{item}' has an unknown system prefix"
+                        )));
+                    }
+                    out.push(it);
+                }
+            }
+            Ok(out)
+        };
+
+        let config = AnalysisConfig {
             elevation_cutoff,
             systems,
-        }
+            bias_window_seconds,
+            min_arc_seconds,
+            arc_gap_factor,
+            include_codes: validate(&include_codes, "include_codes")?,
+            exclude_codes: validate(&exclude_codes, "exclude_codes")?,
+            max_epochs,
+            detect_cycle_slips,
+            slip: SlipThresholds {
+                ion_delta_base,
+                ion_delta_rate,
+                cp_delta_base,
+                cp_delta_rate,
+                ..SlipThresholds::default()
+            },
+            ..AnalysisConfig::default()
+        };
+
+        Ok(Self {
+            obs_data: obs_data.inner.clone(),
+            config,
+        })
     }
-    
+
     fn analyze(&self) -> PyResult<PyAnalysisResults> {
-        // Multipath analysis with bias removal per satellite arc
-        // Key: (satellite, signal) -> Vec of (epoch_seconds, epoch_string, mp_value)
-        let mut raw_mp: HashMap<(String, String), Vec<(f64, String, f64)>> = HashMap::new();
-        
-        // First pass: compute raw MP values with epoch timestamps for arc detection
-        for epoch_obs in &self.obs_data.epochs {
-            let epoch_seconds = epoch_obs.epoch.to_julian_date() * 86400.0; // For arc detection
-            
-            for (sat, obs) in &epoch_obs.satellites {
-                if !self.systems.contains(&sat.system) {
-                    continue;
-                }
-                
-                let sys_char = sat.system.to_char();
-                
-                // Get code and phase observations
-                let code_obs: Vec<_> = obs.iter()
-                    .filter(|(k, _)| k.is_code())
-                    .collect();
-                let phase_obs: Vec<_> = obs.iter()
-                    .filter(|(k, _)| k.is_phase())
-                    .collect();
-                
-                // Need at least one code and two phases for MP
-                if code_obs.is_empty() || phase_obs.len() < 2 {
-                    continue;
-                }
-                
-                // Try to find matching frequency pairs
-                for (code_sig, code_val) in &code_obs {
-                    let code_band = code_sig.band;
-                    
-                    // Find two phase observations on different bands
-                    let mut phases_by_band: HashMap<u8, (&SignalCode, f64)> = HashMap::new();
-                    for (p_sig, p_val) in &phase_obs {
-                        phases_by_band.insert(p_sig.band, (*p_sig, p_val.value));
-                    }
-                    
-                    // Get phases for bands with sufficiently different frequencies
-                    // Avoid BeiDou (1,2) pair as B1C and B1I are too close (1575 vs 1561 MHz)
-                    // Prefer wider frequency separations for better MP estimates
-                    let band_pairs: &[(u8, u8)] = if sys_char == 'C' {
-                        // BeiDou: Use B1C-B2a (1,5), B1C-B3I (1,6), B1C-B2I (1,7), etc.
-                        &[(1, 5), (1, 6), (1, 7), (2, 5), (2, 7), (5, 6), (5, 7), (6, 7)]
-                    } else {
-                        // GPS, Galileo, GLONASS: standard pairs
-                        &[(1, 2), (1, 5), (2, 5), (1, 7), (5, 7), (1, 6), (6, 7), (2, 7)]
-                    };
-                    
-                    for (b1, b2) in band_pairs {
-                        // CRITICAL: Code must be on the same band as the first phase (b1)
-                        // MP_i = C_i - (1 + 2/(α-1))·L_i + (2/(α-1))·L_j
-                        // where i is the code/first-phase band, j is the second phase band
-                        if code_band != *b1 {
-                            continue;  // Skip - code band doesn't match first phase band
-                        }
-                        
-                        if let (Some((_, l1_cycles)), Some((_, l2_cycles))) = 
-                            (phases_by_band.get(b1), phases_by_band.get(b2)) 
-                        {
-                            // Get GLONASS FCN if applicable
-                            let fcn = if sat.system == GnssSystem::Glonass {
-                                self.obs_data.header.glonass_slot_frq.get(&sat.prn).copied()
-                            } else {
-                                None
-                            };
-                            
-                            // Get frequencies (with FCN for GLONASS)
-                            let f1 = match crate::utils::constants::get_frequency(sys_char, *b1, fcn) {
-                                Some(f) => f,
-                                None => continue,
-                            };
-                            let f2 = match crate::utils::constants::get_frequency(sys_char, *b2, fcn) {
-                                Some(f) => f,
-                                None => continue,
-                            };
-                            
-                            // Compute wavelengths
-                            let lambda1 = crate::utils::constants::SPEED_OF_LIGHT / f1;
-                            let lambda2 = crate::utils::constants::SPEED_OF_LIGHT / f2;
-                            
-                            // Alpha factor (f1/f2)^2
-                            let alpha = (f1 / f2).powi(2);
-                            
-                            // Skip if frequencies are too close (ill-conditioned)
-                            // alpha should be > 1.1 or < 0.9 for good MP estimates
-                            if (alpha - 1.0).abs() < 0.1 {
-                                continue;  // frequencies too close, try next pair
-                            }
-                            
-                            // Convert phase to meters
-                            let l1 = l1_cycles * lambda1;
-                            let l2 = l2_cycles * lambda2;
-                            let c1 = code_val.value;
-                            
-                            // MP = C1 - (1 + 2/(α-1))·L1 + (2/(α-1))·L2
-                            let mp = c1 - (1.0 + 2.0/(alpha - 1.0)) * l1 + (2.0/(alpha - 1.0)) * l2;
-                            
-                            if mp.is_finite() && mp.abs() < 1000.0 {
-                                let key = (sat.to_string(), code_sig.to_string());
-                                raw_mp.entry(key)
-                                    .or_default()
-                                    .push((epoch_seconds, epoch_obs.epoch.to_iso_string(), mp));
-                            }
-                            
-                            break; // Use first valid band pair
-                        }
-                    }
-                }
+        let analyzer = MultipathAnalyzer::new(self.obs_data.clone(), self.config.clone());
+        let results = analyzer
+            .analyze()
+            .map_err(|e| PyValueError::new_err(format!("Multipath analysis failed: {e}")))?;
+
+        // Flatten estimates, sorted for deterministic output
+        let mut keys: Vec<&String> = results.estimates.keys().collect();
+        keys.sort();
+        let mut estimates = Vec::with_capacity(results.summary.total_estimates);
+        for key in &keys {
+            for est in &results.estimates[*key] {
+                estimates.push(PyMultipathEstimate {
+                    satellite: est.satellite.to_string(),
+                    system: est.satellite.system.to_char().to_string(),
+                    epoch: est.epoch.to_iso_string(),
+                    mp_value: est.mp_value,
+                    elevation: est.elevation,
+                    azimuth: est.azimuth,
+                    snr: est.snr,
+                    signal: est.signal.clone(),
+                });
             }
         }
-        
-        // Second pass: detect arcs and remove bias per arc
-        // Arc boundary: gap > 60 seconds OR large MP jump (cycle slip indicator)
-        let arc_gap_threshold = 60.0; // seconds
-        let arc_jump_threshold = 10.0; // meters - MP jump indicating cycle slip
-        let mut estimates = Vec::new();
-        let mut stats_map: HashMap<String, Vec<f64>> = HashMap::new();
-        
-        for ((sat_id, signal), mut values) in raw_mp {
-            if values.len() < 2 {
-                continue;
-            }
-            
-            // Sort by epoch time
-            values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-            
-            // Get system char
-            let sys_char = sat_id.chars().next().unwrap_or('G');
-            
-            // Split into arcs based on time gaps OR MP jumps
-            let mut arcs: Vec<Vec<(f64, String, f64)>> = Vec::new();
-            let mut current_arc: Vec<(f64, String, f64)> = Vec::new();
-            
-            for (i, val) in values.iter().enumerate() {
-                if i == 0 {
-                    current_arc.push(val.clone());
-                } else {
-                    let time_gap = val.0 - values[i-1].0;
-                    let mp_jump = (val.2 - values[i-1].2).abs();
-                    
-                    // Start new arc if time gap too large OR MP value jumped (cycle slip)
-                    if time_gap > arc_gap_threshold || mp_jump > arc_jump_threshold {
-                        // Save current arc if it has enough points
-                        if current_arc.len() >= 10 {  // Require at least 10 epochs per arc
-                            arcs.push(current_arc);
-                        }
-                        current_arc = Vec::new();
-                    }
-                    current_arc.push(val.clone());
-                }
-            }
-            // Don't forget the last arc
-            if current_arc.len() >= 10 {
-                arcs.push(current_arc);
-            }
-            
-            // Process each arc: compute mean and remove bias
-            for arc in arcs {
-                // Compute mean (bias) for this arc
-                let mean_bias: f64 = arc.iter().map(|(_, _, mp)| mp).sum::<f64>() / arc.len() as f64;
-                
-                // Store debiased values
-                for (_, epoch, mp) in arc {
-                    let mp_debiased = mp - mean_bias;
-                    
-                    estimates.push(PyMultipathEstimate {
-                        satellite: sat_id.clone(),
-                        system: sys_char.to_string(),
-                        epoch: epoch.clone(),
-                        mp_value: mp_debiased,
-                        elevation: 45.0, // Placeholder - will be updated by compute_elevations
-                        azimuth: 0.0,
-                        snr: None,
-                        signal: signal.clone(),
-                    });
-                    
-                    stats_map.entry(format!("{}_{}", sys_char, signal))
-                        .or_default()
-                        .push(mp_debiased);
-                }
-            }
-        }
-        
-        // Compute statistics from debiased values
-        let mut statistics = Vec::new();
-        for (signal, values) in stats_map {
-            if values.is_empty() {
-                continue;
-            }
-            
-            let n = values.len() as f64;
-            let mean = values.iter().sum::<f64>() / n;
-            let variance = values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n;
-            let std_dev = variance.sqrt();
-            let rms = (values.iter().map(|x| x.powi(2)).sum::<f64>() / n).sqrt();
-            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            
-            statistics.push(PyMultipathStats {
-                signal,
-                count: values.len(),
-                rms,
-                mean,
-                std_dev,
-                min,
-                max,
-                weighted_rms: rms,
-            });
-        }
-        
-        // Sort statistics by signal name
+
+        let mut statistics: Vec<PyMultipathStats> = results
+            .statistics
+            .iter()
+            .map(|(name, s)| PyMultipathStats {
+                signal: name.clone(),
+                count: s.count,
+                rms: s.rms,
+                mean: s.mean,
+                std_dev: s.std_dev,
+                min: s.min,
+                max: s.max,
+                weighted_rms: s.weighted_rms,
+                system: s.system.clone(),
+                code: s.code.clone(),
+                cycle_slips: s.cycle_slips,
+            })
+            .collect();
         statistics.sort_by(|a, b| a.signal.cmp(&b.signal));
-        
+
+        let cycle_slips: Vec<PyCycleSlip> = results
+            .cycle_slips
+            .iter()
+            .map(|cs| PyCycleSlip {
+                satellite: cs.satellite.to_string(),
+                epoch: cs.epoch.to_iso_string(),
+                magnitude: cs.magnitude,
+                method: cs.method.as_str().to_string(),
+                signal: cs
+                    .signals
+                    .first()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
+                system: cs.satellite.system.to_char().to_string(),
+                threshold: cs.threshold,
+            })
+            .collect();
+
         Ok(PyAnalysisResults {
             estimates,
             statistics,
-            cycle_slips: Vec::new(),
+            cycle_slips,
+            cycle_slip_counts: results.cycle_slip_counts,
         })
+    }
+}
+
+/// SNR time series for one satellite and one S-code
+#[cfg(feature = "python")]
+#[pyclass(name = "SnrSeries")]
+#[derive(Clone)]
+pub struct PySnrSeries {
+    #[pyo3(get)]
+    pub satellite: String,
+    #[pyo3(get)]
+    pub system: String,
+    #[pyo3(get)]
+    pub code: String,
+    /// Unix seconds (file time scale)
+    #[pyo3(get)]
+    pub times: Vec<f64>,
+    /// SNR values (dB-Hz)
+    #[pyo3(get)]
+    pub values: Vec<f64>,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PySnrSeries {
+    /// Epochs as ISO 8601 strings (computed on demand)
+    fn epochs_iso(&self) -> Vec<String> {
+        self.times
+            .iter()
+            .map(|t| {
+                let secs = t.floor() as i64;
+                let nanos = ((t - t.floor()) * 1e9) as u32;
+                chrono::DateTime::from_timestamp(secs, nanos)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    fn __len__(&self) -> usize {
+        self.values.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "SnrSeries(satellite='{}', code='{}', points={})",
+            self.satellite,
+            self.code,
+            self.values.len()
+        )
     }
 }
 
@@ -776,7 +854,7 @@ fn read_rinex_obs(path: &str) -> PyResult<PyRinexObsData> {
     let data = reader.read(path)
         .map_err(|e| PyIOError::new_err(format!("Failed to read RINEX: {}", e)))?;
     
-    Ok(PyRinexObsData { inner: data })
+    Ok(PyRinexObsData { inner: Arc::new(data) })
 }
 
 /// Read RINEX observation from bytes
@@ -801,7 +879,7 @@ fn read_rinex_obs_bytes(data: &[u8], filename: &str) -> PyResult<PyRinexObsData>
     // Clean up
     let _ = std::fs::remove_file(&temp_path);
     
-    Ok(PyRinexObsData { inner: obs_data })
+    Ok(PyRinexObsData { inner: Arc::new(obs_data) })
 }
 
 /// Get frequency for a GNSS signal
@@ -922,6 +1000,7 @@ fn geoveil_mp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyCycleSlip>()?;
     m.add_class::<PyAnalysisResults>()?;
     m.add_class::<PyMultipathAnalyzer>()?;
+    m.add_class::<PySnrSeries>()?;
     m.add_class::<PySp3Data>()?;
     
     // Functions

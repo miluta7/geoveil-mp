@@ -179,12 +179,45 @@ pub mod system_identifiers {
 pub mod thresholds {
     /// Default elevation cutoff angle (degrees)
     pub const ELEVATION_CUTOFF: f64 = 10.0;
-    
+
     /// Ionospheric rate threshold for cycle slip detection (m/s)
+    /// Deprecated: rate-based thresholds miss small slips at long sampling
+    /// intervals; use the delta-domain ION_DELTA_* constants instead.
     pub const ION_RATE_THRESHOLD: f64 = 0.0667;
-    
+
     /// Code-phase threshold for cycle slip detection (m/s)
+    /// Deprecated: see CP_DELTA_* delta-domain constants.
     pub const CODE_PHASE_THRESHOLD: f64 = 6.667;
+
+    /// Geometry-free delta threshold base term (m): |ΔGF| > base + rate·dt
+    pub const ION_DELTA_BASE: f64 = 0.10;
+
+    /// Geometry-free delta threshold rate term (m/s of epoch spacing)
+    pub const ION_DELTA_RATE: f64 = 0.003;
+
+    /// Code-phase delta threshold base term (m)
+    pub const CP_DELTA_BASE: f64 = 5.0;
+
+    /// Code-phase delta threshold rate term (m/s of epoch spacing)
+    pub const CP_DELTA_RATE: f64 = 0.10;
+
+    /// Maximum epoch spacing for differential slip tests (s)
+    pub const MAX_SLIP_DT: f64 = 300.0;
+
+    /// Arc break when epoch gap exceeds this multiple of the sampling interval
+    pub const ARC_GAP_FACTOR: f64 = 5.0;
+
+    /// Minimum arc duration to keep for multipath statistics (s)
+    pub const MIN_ARC_SECONDS: f64 = 300.0;
+
+    /// Moving-average bias window for MP debiasing (s); TEQC uses 50 epochs at 30 s
+    pub const BIAS_WINDOW_SECONDS: f64 = 1500.0;
+
+    /// MP jump magnitude that forces an arc break (m)
+    pub const MP_JUMP_THRESHOLD: f64 = 10.0;
+
+    /// Minimum |alpha - 1| separation for a usable dual-frequency pair
+    pub const MIN_ALPHA_SEPARATION: f64 = 0.1;
     
     /// Position convergence threshold (m)
     pub const POSITION_CONVERGENCE: f64 = 1e-8;
@@ -254,6 +287,22 @@ pub fn get_frequency(system: char, band: u8, glonass_channel: Option<i8>) -> Opt
         ('S', 1) => Some(sbas::L1),
         ('S', 5) => Some(sbas::L5),
         _ => None,
+    }
+}
+
+/// Partner-band priority per system for MP phase pairing: the second phase
+/// L_j is taken from the first band in this list (≠ the code's own band)
+/// that has phase data and sufficient frequency separation.
+pub fn partner_bands(system: char) -> &'static [u8] {
+    match system {
+        'G' => &[1, 2, 5],
+        'R' => &[1, 2, 3],
+        'E' => &[1, 5, 7, 8, 6],
+        'C' => &[2, 7, 6, 1, 5],
+        'J' => &[1, 2, 5, 6],
+        'S' => &[1, 5],
+        'I' => &[5, 9],
+        _ => &[],
     }
 }
 

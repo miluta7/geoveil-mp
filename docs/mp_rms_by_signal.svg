@@ -1,0 +1,72 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='880' height='360' viewBox='0 0 880 360'>
+<rect width='880' height='360' fill='#0b1220' rx='12'/>
+<text x='64' y='30' fill='#cbd5e1' font-size='15' font-weight='650' font-family='system-ui,-apple-system,sans-serif'>Code multipath RMS by signal</text>
+<text x='64' y='47' fill='#64748b' font-size='11' font-family='system-ui,-apple-system,sans-serif'>BOR1 (EPN) · 24 h · 30 s multi-GNSS RINEX · geoveil-mp 0.2.0 per-code engine</text>
+<line x1='64' y1='296.0' x2='860' y2='296.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='300.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.0</text>
+<line x1='64' y1='256.0' x2='860' y2='256.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='260.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.1</text>
+<line x1='64' y1='216.0' x2='860' y2='216.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='220.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.2</text>
+<line x1='64' y1='176.0' x2='860' y2='176.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='180.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.3</text>
+<line x1='64' y1='136.0' x2='860' y2='136.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='140.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.4</text>
+<line x1='64' y1='96.0' x2='860' y2='96.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='100.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.5</text>
+<line x1='64' y1='56.0' x2='860' y2='56.0' stroke='#1d2a3f' stroke-width='1'/>
+<text x='56' y='60.0' fill='#64748b' font-size='10' text-anchor='end' font-family='system-ui,-apple-system,sans-serif'>0.6</text>
+<text x='16' y='176' fill='#64748b' font-size='10' font-family='system-ui,-apple-system,sans-serif' transform='rotate(-90 16 176)' text-anchor='middle'>RMS (m)</text>
+<rect x='74.1' y='161.2' width='32.9' height='134.8' fill='#f59e0b' rx='3' fill-opacity='0.92'/>
+<text x='90.5' y='155.2' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.34</text>
+<text x='90.5' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M2I</text>
+<rect x='127.1' y='154.4' width='32.9' height='141.6' fill='#f59e0b' rx='3' fill-opacity='0.92'/>
+<text x='143.6' y='148.4' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.35</text>
+<text x='143.6' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M6I</text>
+<rect x='180.2' y='178.0' width='32.9' height='118.0' fill='#f59e0b' rx='3' fill-opacity='0.92'/>
+<text x='196.7' y='172.0' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.29</text>
+<text x='196.7' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M7I</text>
+<rect x='233.3' y='199.6' width='32.9' height='96.4' fill='#22c55e' rx='3' fill-opacity='0.92'/>
+<text x='249.7' y='193.6' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.24</text>
+<text x='249.7' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M1X</text>
+<rect x='286.3' y='147.6' width='32.9' height='148.4' fill='#22c55e' rx='3' fill-opacity='0.92'/>
+<text x='302.8' y='141.6' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.37</text>
+<text x='302.8' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M5X</text>
+<rect x='339.4' y='138.0' width='32.9' height='158.0' fill='#22c55e' rx='3' fill-opacity='0.92'/>
+<text x='355.9' y='132.0' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.40</text>
+<text x='355.9' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M7X</text>
+<rect x='392.5' y='230.0' width='32.9' height='66.0' fill='#22c55e' rx='3' fill-opacity='0.92'/>
+<text x='408.9' y='224.0' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.17</text>
+<text x='408.9' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M8X</text>
+<rect x='445.5' y='69.6' width='32.9' height='226.4' fill='#ef4444' rx='3' fill-opacity='0.92'/>
+<text x='462.0' y='63.6' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.57</text>
+<text x='462.0' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M1C</text>
+<rect x='498.6' y='140.4' width='32.9' height='155.6' fill='#ef4444' rx='3' fill-opacity='0.92'/>
+<text x='515.1' y='134.4' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.39</text>
+<text x='515.1' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M1P</text>
+<rect x='551.7' y='85.6' width='32.9' height='210.4' fill='#ef4444' rx='3' fill-opacity='0.92'/>
+<text x='568.1' y='79.6' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.53</text>
+<text x='568.1' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M2C</text>
+<rect x='604.7' y='168.8' width='32.9' height='127.2' fill='#ef4444' rx='3' fill-opacity='0.92'/>
+<text x='621.2' y='162.8' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.32</text>
+<text x='621.2' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M2P</text>
+<rect x='657.8' y='159.2' width='32.9' height='136.8' fill='#4c8dff' rx='3' fill-opacity='0.92'/>
+<text x='674.3' y='153.2' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.34</text>
+<text x='674.3' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M1C</text>
+<rect x='710.9' y='164.4' width='32.9' height='131.6' fill='#4c8dff' rx='3' fill-opacity='0.92'/>
+<text x='727.3' y='158.4' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.33</text>
+<text x='727.3' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M2W</text>
+<rect x='763.9' y='171.2' width='32.9' height='124.8' fill='#4c8dff' rx='3' fill-opacity='0.92'/>
+<text x='780.4' y='165.2' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.31</text>
+<text x='780.4' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M2X</text>
+<rect x='817.0' y='152.0' width='32.9' height='144.0' fill='#4c8dff' rx='3' fill-opacity='0.92'/>
+<text x='833.5' y='146.0' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>0.36</text>
+<text x='833.5' y='312' fill='#cbd5e1' font-size='10' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>M5X</text>
+<text x='143.6' y='334' fill='#f59e0b' font-size='12' font-weight='650' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>BeiDou</text>
+<text x='329.3' y='334' fill='#22c55e' font-size='12' font-weight='650' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>Galileo</text>
+<line x1='223.2' y1='56' x2='223.2' y2='338' stroke='#1d2a3f' stroke-width='1' stroke-dasharray='3,4'/>
+<text x='541.6' y='334' fill='#ef4444' font-size='12' font-weight='650' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>GLONASS</text>
+<line x1='435.5' y1='56' x2='435.5' y2='338' stroke='#1d2a3f' stroke-width='1' stroke-dasharray='3,4'/>
+<text x='753.9' y='334' fill='#4c8dff' font-size='12' font-weight='650' text-anchor='middle' font-family='system-ui,-apple-system,sans-serif'>GPS</text>
+<line x1='647.7' y1='56' x2='647.7' y2='338' stroke='#1d2a3f' stroke-width='1' stroke-dasharray='3,4'/>
+</svg>
