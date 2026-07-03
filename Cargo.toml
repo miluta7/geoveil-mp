@@ -1,6 +1,6 @@
 [package]
 name = "geoveil_mp"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Miluta-Dulea Flueras <miluta.flueras@cartografie.ro>"]
 description = "High-performance GNSS multipath analysis library with support for RINEX v2/v3/v4, SP3 precise orbits, and multi-constellation processing"

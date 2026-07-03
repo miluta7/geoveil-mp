@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-03
+
+### Changed
+- **Release the GIL during analysis**: `MultipathAnalyzer.analyze()`,
+  `read_rinex_obs()`, `read_rinex_obs_bytes()` and
+  `AnalysisResults.compute_elevations()` now run their pure-Rust cores with
+  the Python GIL released. Callers using thread pools (e.g. the GeoVeil
+  batch worker) get true multi-core parallelism — previously N worker
+  threads processed files effectively serially.
+
 ## [0.2.0] - 2026-07-02
 
 Anubis/TEQC-style per-code multipath engine, interval-aware cycle-slip

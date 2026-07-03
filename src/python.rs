@@ -542,51 +542,60 @@ impl PyAnalysisResults {
     
     /// Compute elevations and azimuths for all estimates using SP3 data
     /// Returns (computed_count, failed_count)
-    fn compute_elevations(&mut self, sp3: &PySp3Data, receiver: &PyEcef) -> (usize, usize) {
-        let interpolator = NevilleInterpolator::new();
-        let mut computed = 0;
-        let mut failed = 0;
-        
-        for est in &mut self.estimates {
-            // Parse satellite
-            let sat = match crate::rinex::Satellite::parse(&est.satellite) {
-                Some(s) => s,
-                None => {
+    fn compute_elevations(&mut self, py: Python<'_>, sp3: &PySp3Data, receiver: &PyEcef) -> (usize, usize) {
+        let receiver_pos = receiver.inner.clone();
+        let sp3_data = &sp3.inner;
+        let estimates = &mut self.estimates;
+
+        // Pure Rust interpolation over (possibly) hundreds of thousands of
+        // estimates — release the GIL
+        let (computed, failed) = py.allow_threads(move || {
+            let interpolator = NevilleInterpolator::new();
+            let mut computed = 0;
+            let mut failed = 0;
+
+            for est in estimates.iter_mut() {
+                // Parse satellite
+                let sat = match crate::rinex::Satellite::parse(&est.satellite) {
+                    Some(s) => s,
+                    None => {
+                        failed += 1;
+                        continue;
+                    }
+                };
+
+                // Parse epoch from ISO string
+                let epoch = match Epoch::parse(&est.epoch) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        failed += 1;
+                        continue;
+                    }
+                };
+
+                // Interpolate satellite position
+                let sat_pos = match interpolator.interpolate(sp3_data, &sat, &epoch) {
+                    Some(p) => p.position,
+                    None => {
+                        failed += 1;
+                        continue;
+                    }
+                };
+
+                // Calculate azimuth and elevation
+                let azel = crate::utils::calculate_azel(&receiver_pos, &sat_pos);
+
+                // Only accept if elevation is positive (satellite above horizon)
+                if azel.elevation > 0.0 {
+                    est.elevation = azel.elevation;
+                    est.azimuth = azel.azimuth;
+                    computed += 1;
+                } else {
                     failed += 1;
-                    continue;
                 }
-            };
-            
-            // Parse epoch from ISO string
-            let epoch = match Epoch::parse(&est.epoch) {
-                Ok(e) => e,
-                Err(_) => {
-                    failed += 1;
-                    continue;
-                }
-            };
-            
-            // Interpolate satellite position
-            let sat_pos = match interpolator.interpolate(&sp3.inner, &sat, &epoch) {
-                Some(p) => p.position,
-                None => {
-                    failed += 1;
-                    continue;
-                }
-            };
-            
-            // Calculate azimuth and elevation
-            let azel = crate::utils::calculate_azel(&receiver.inner, &sat_pos);
-            
-            // Only accept if elevation is positive (satellite above horizon)
-            if azel.elevation > 0.0 {
-                est.elevation = azel.elevation;
-                est.azimuth = azel.azimuth;
-                computed += 1;
-            } else {
-                failed += 1;
             }
-        }
+            (computed, failed)
+        });
 
         // Recompute elevation-weighted RMS now that real elevations exist
         if computed > 0 {
@@ -725,74 +734,83 @@ impl PyMultipathAnalyzer {
         })
     }
 
-    fn analyze(&self) -> PyResult<PyAnalysisResults> {
-        let analyzer = MultipathAnalyzer::new(self.obs_data.clone(), self.config.clone());
-        let results = analyzer
-            .analyze()
-            .map_err(|e| PyValueError::new_err(format!("Multipath analysis failed: {e}")))?;
+    fn analyze(&self, py: Python<'_>) -> PyResult<PyAnalysisResults> {
+        let obs_data = self.obs_data.clone();
+        let config = self.config.clone();
 
-        // Flatten estimates, sorted for deterministic output
-        let mut keys: Vec<&String> = results.estimates.keys().collect();
-        keys.sort();
-        let mut estimates = Vec::with_capacity(results.summary.total_estimates);
-        for key in &keys {
-            for est in &results.estimates[*key] {
-                estimates.push(PyMultipathEstimate {
-                    satellite: est.satellite.to_string(),
-                    system: est.satellite.system.to_char().to_string(),
-                    epoch: est.epoch.to_iso_string(),
-                    mp_value: est.mp_value,
-                    elevation: est.elevation,
-                    azimuth: est.azimuth,
-                    snr: est.snr,
-                    signal: est.signal.clone(),
-                });
+        // Engine AND result conversion are pure Rust (PyO3 structs are plain
+        // data until wrapped) — release the GIL for the whole pipeline so
+        // callers can analyze multiple files in parallel threads
+        let out = py.allow_threads(move || -> Result<PyAnalysisResults, String> {
+            let results = MultipathAnalyzer::new(obs_data, config)
+                .analyze()
+                .map_err(|e| format!("Multipath analysis failed: {e}"))?;
+
+            // Flatten estimates, sorted for deterministic output
+            let mut keys: Vec<&String> = results.estimates.keys().collect();
+            keys.sort();
+            let mut estimates = Vec::with_capacity(results.summary.total_estimates);
+            for key in &keys {
+                for est in &results.estimates[*key] {
+                    estimates.push(PyMultipathEstimate {
+                        satellite: est.satellite.to_string(),
+                        system: est.satellite.system.to_char().to_string(),
+                        epoch: est.epoch.to_iso_string(),
+                        mp_value: est.mp_value,
+                        elevation: est.elevation,
+                        azimuth: est.azimuth,
+                        snr: est.snr,
+                        signal: est.signal.clone(),
+                    });
+                }
             }
-        }
 
-        let mut statistics: Vec<PyMultipathStats> = results
-            .statistics
-            .iter()
-            .map(|(name, s)| PyMultipathStats {
-                signal: name.clone(),
-                count: s.count,
-                rms: s.rms,
-                mean: s.mean,
-                std_dev: s.std_dev,
-                min: s.min,
-                max: s.max,
-                weighted_rms: s.weighted_rms,
-                system: s.system.clone(),
-                code: s.code.clone(),
-                cycle_slips: s.cycle_slips,
+            let mut statistics: Vec<PyMultipathStats> = results
+                .statistics
+                .iter()
+                .map(|(name, s)| PyMultipathStats {
+                    signal: name.clone(),
+                    count: s.count,
+                    rms: s.rms,
+                    mean: s.mean,
+                    std_dev: s.std_dev,
+                    min: s.min,
+                    max: s.max,
+                    weighted_rms: s.weighted_rms,
+                    system: s.system.clone(),
+                    code: s.code.clone(),
+                    cycle_slips: s.cycle_slips,
+                })
+                .collect();
+            statistics.sort_by(|a, b| a.signal.cmp(&b.signal));
+
+            let cycle_slips: Vec<PyCycleSlip> = results
+                .cycle_slips
+                .iter()
+                .map(|cs| PyCycleSlip {
+                    satellite: cs.satellite.to_string(),
+                    epoch: cs.epoch.to_iso_string(),
+                    magnitude: cs.magnitude,
+                    method: cs.method.as_str().to_string(),
+                    signal: cs
+                        .signals
+                        .first()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default(),
+                    system: cs.satellite.system.to_char().to_string(),
+                    threshold: cs.threshold,
+                })
+                .collect();
+
+            Ok(PyAnalysisResults {
+                estimates,
+                statistics,
+                cycle_slips,
+                cycle_slip_counts: results.cycle_slip_counts,
             })
-            .collect();
-        statistics.sort_by(|a, b| a.signal.cmp(&b.signal));
+        });
 
-        let cycle_slips: Vec<PyCycleSlip> = results
-            .cycle_slips
-            .iter()
-            .map(|cs| PyCycleSlip {
-                satellite: cs.satellite.to_string(),
-                epoch: cs.epoch.to_iso_string(),
-                magnitude: cs.magnitude,
-                method: cs.method.as_str().to_string(),
-                signal: cs
-                    .signals
-                    .first()
-                    .map(|s| s.to_string())
-                    .unwrap_or_default(),
-                system: cs.satellite.system.to_char().to_string(),
-                threshold: cs.threshold,
-            })
-            .collect();
-
-        Ok(PyAnalysisResults {
-            estimates,
-            statistics,
-            cycle_slips,
-            cycle_slip_counts: results.cycle_slip_counts,
-        })
+        out.map_err(PyValueError::new_err)
     }
 }
 
@@ -849,18 +867,19 @@ impl PySnrSeries {
 /// Read RINEX observation file
 #[cfg(feature = "python")]
 #[pyfunction]
-fn read_rinex_obs(path: &str) -> PyResult<PyRinexObsData> {
-    let reader = RinexObsReader::new();
-    let data = reader.read(path)
+fn read_rinex_obs(py: Python<'_>, path: &str) -> PyResult<PyRinexObsData> {
+    let path = path.to_string();
+    let data = py
+        .allow_threads(move || RinexObsReader::new().read(&path))
         .map_err(|e| PyIOError::new_err(format!("Failed to read RINEX: {}", e)))?;
-    
+
     Ok(PyRinexObsData { inner: Arc::new(data) })
 }
 
 /// Read RINEX observation from bytes
 #[cfg(feature = "python")]
 #[pyfunction]
-fn read_rinex_obs_bytes(data: &[u8], filename: &str) -> PyResult<PyRinexObsData> {
+fn read_rinex_obs_bytes(py: Python<'_>, data: &[u8], filename: &str) -> PyResult<PyRinexObsData> {
     // Write to temp file and read
     use std::io::Write;
     let temp_dir = std::env::temp_dir();
@@ -872,13 +891,14 @@ fn read_rinex_obs_bytes(data: &[u8], filename: &str) -> PyResult<PyRinexObsData>
         .map_err(|e| PyIOError::new_err(format!("Failed to write temp file: {}", e)))?;
     drop(file);
     
-    let reader = RinexObsReader::new();
-    let obs_data = reader.read(temp_path.to_str().unwrap())
+    let p = temp_path.clone();
+    let obs_data = py
+        .allow_threads(move || RinexObsReader::new().read(p.to_str().unwrap()))
         .map_err(|e| PyIOError::new_err(format!("Failed to parse RINEX: {}", e)))?;
-    
+
     // Clean up
     let _ = std::fs::remove_file(&temp_path);
-    
+
     Ok(PyRinexObsData { inner: Arc::new(obs_data) })
 }
 
