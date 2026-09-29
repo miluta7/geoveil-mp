@@ -12,7 +12,7 @@
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-red.svg)](LICENSE)
 [![CI/CD](https://github.com/miluta7/geoveil-mp/actions/workflows/ci.yml/badge.svg)](https://github.com/miluta7/geoveil-mp/actions)
 
-<img src="docs/mp_rms_by_signal.svg" width="880" alt="Code multipath RMS by signal — real 24 h / 30 s multi-GNSS data">
+<img src="https://raw.githubusercontent.com/miluta7/geoveil-mp/main/docs/mp_rms_by_signal.svg" width="880" alt="Code multipath RMS by signal — real 24 h / 30 s multi-GNSS data">
 
 </div>
 
@@ -77,7 +77,7 @@ for series in obs.get_snr_series("G07"):
 ```
 
 <div align="center">
-<img src="docs/mp_series.svg" width="880" alt="Debiased MP series for one satellite — the oscillation is site multipath">
+<img src="https://raw.githubusercontent.com/miluta7/geoveil-mp/main/docs/mp_series.svg" width="880" alt="Debiased MP series for one satellite — the oscillation is site multipath">
 </div>
 
 ---
@@ -135,8 +135,8 @@ zones = gm.fresnel_map([("G05", azimuths, elevations)], antenna_height=2.0)
 - Fresnel footprints are sampled once per 10° × 10° azimuth/elevation cell above the elevation cutoff
 
 <p align="center">
-  <img src="docs/img/fresnel_map.webp" width="420" alt="First Fresnel zone footprints on the GeoVeil platform">
-  <img src="docs/img/scalogram.webp" width="440" alt="Morlet wavelet scalogram of detrended SNR on the GeoVeil platform">
+  <img src="https://raw.githubusercontent.com/miluta7/geoveil-mp/main/docs/img/fresnel_map.webp" width="420" alt="First Fresnel zone footprints on the GeoVeil platform">
+  <img src="https://raw.githubusercontent.com/miluta7/geoveil-mp/main/docs/img/scalogram.webp" width="440" alt="Morlet wavelet scalogram of detrended SNR on the GeoVeil platform">
 </p>
 
 ---
