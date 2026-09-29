@@ -9,6 +9,8 @@
 mod multipath;
 mod cycle_slip;
 mod position;
+/// SNR wavelets and Fresnel zones (Hunegnaw & Teferle 2022).
+pub mod advanced;
 
 pub use multipath::{
     MultipathAnalyzer, MultipathEstimate, MultipathStatistics,

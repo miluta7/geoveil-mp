@@ -1004,6 +1004,183 @@ fn compute_elevation(sp3: &PySp3Data, receiver: &PyEcef, satellite: &str, epoch:
     Some(azel.elevation)
 }
 
+// ============ Advanced multipath: SNR wavelets & Fresnel zones ============
+
+#[cfg(feature = "python")]
+use crate::analysis::advanced as adv;
+#[cfg(feature = "python")]
+use pyo3::types::PyDict;
+
+/// Morlet continuous wavelet transform (Torrence & Compo 1998).
+/// Returns {"power", "scales", "periods", "coi"}; `power` has one row per scale.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (y, dt, dj=0.125, s0=None))]
+fn morlet_cwt<'py>(py: Python<'py>, y: Vec<f64>, dt: f64, dj: f64, s0: Option<f64>) -> PyResult<Bound<'py, PyDict>> {
+    let cwt = py.allow_threads(|| adv::morlet_cwt(&y, dt, dj, s0));
+    let d = PyDict::new_bound(py);
+    d.set_item("power", cwt.power())?;
+    d.set_item("scales", &cwt.scales)?;
+    d.set_item("periods", &cwt.periods)?;
+    d.set_item("coi", &cwt.coi)?;
+    Ok(d)
+}
+
+/// Scale-averaged wavelet power of `y` for each `(lo, hi)` period band (s).
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (y, dt, bands, dj=0.125))]
+fn band_power(py: Python<'_>, y: Vec<f64>, dt: f64, bands: Vec<(f64, f64)>, dj: f64) -> Vec<Vec<f64>> {
+    py.allow_threads(|| {
+        let cwt = adv::morlet_cwt(&y, dt, dj, None);
+        bands.iter().map(|b| cwt.band_power(*b)).collect()
+    })
+}
+
+/// Red-noise significance level per period (T&C eq. 16-18).
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (y, dt, periods, confidence=0.95))]
+fn red_noise_significance(y: Vec<f64>, dt: f64, periods: Vec<f64>, confidence: f64) -> Vec<f64> {
+    adv::red_noise_significance(&y, dt, &periods, confidence)
+}
+
+/// Interval-adaptive period bands (s) for SNR band power.
+#[cfg(feature = "python")]
+#[pyfunction]
+fn period_bands(dt: f64) -> Vec<(f64, f64)> {
+    adv::period_bands(dt)
+}
+
+/// Remove the best polynomial trend (order 2..max_order). Returns (residual, order).
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (t, values, max_order=9))]
+fn detrend_arc(t: Vec<f64>, values: Vec<f64>, max_order: usize) -> PyResult<(Vec<f64>, usize)> {
+    if t.len() != values.len() {
+        return Err(PyValueError::new_err("t and values must have the same length"));
+    }
+    Ok(adv::detrend_arc(&t, &values, max_order))
+}
+
+/// Split increasing times into contiguous arcs at gaps > gap_factor·dt.
+/// Returns (start, stop) index pairs.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (times, dt, gap_factor=5.0))]
+fn split_arcs(times: Vec<f64>, dt: f64, gap_factor: f64) -> Vec<(usize, usize)> {
+    adv::split_arcs(&times, gap_factor, dt).into_iter().map(|r| (r.start, r.end)).collect()
+}
+
+/// First Fresnel zone (a, b, distance) in metres for a horizontal reflector
+/// `antenna_height` below the antenna. Wavelength defaults to GPS L1.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (elevation, antenna_height, wavelength=None))]
+fn fresnel_zone(elevation: f64, antenna_height: f64, wavelength: Option<f64>) -> (f64, f64, f64) {
+    let z = adv::fresnel_zone(elevation, antenna_height, wavelength.unwrap_or(adv::DEFAULT_WAVELENGTH));
+    (z.a, z.b, z.distance)
+}
+
+/// Fresnel footprints along satellite tracks, one per 10°×10° az/el cell.
+/// `tracks` is a list of (satellite, azimuths, elevations) in degrees.
+/// Returns dicts with keys sat, az, el, a, b, dist.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (tracks, antenna_height, min_elevation=5.0, wavelength=None))]
+fn fresnel_map<'py>(
+    py: Python<'py>,
+    tracks: Vec<(String, Vec<f64>, Vec<f64>)>,
+    antenna_height: f64,
+    min_elevation: f64,
+    wavelength: Option<f64>,
+) -> PyResult<Vec<Bound<'py, PyDict>>> {
+    let wl = wavelength.unwrap_or(adv::DEFAULT_WAVELENGTH);
+    adv::fresnel_map(&tracks, antenna_height, min_elevation, wl)
+        .into_iter()
+        .map(|s| {
+            let d = PyDict::new_bound(py);
+            d.set_item("sat", s.satellite)?;
+            d.set_item("az", s.azimuth)?;
+            d.set_item("el", s.elevation)?;
+            d.set_item("a", s.zone.a)?;
+            d.set_item("b", s.zone.b)?;
+            d.set_item("dist", s.zone.distance)?;
+            Ok(d)
+        })
+        .collect()
+}
+
+/// Wavelet scalogram of the longest arc: {"t", "periods", "power",
+/// "significance", "coi", "interval"}. Needs at least 40 samples.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (t, values, interval, max_columns=600))]
+fn scalogram<'py>(py: Python<'py>, t: Vec<f64>, values: Vec<f64>, interval: f64, max_columns: usize) -> PyResult<Bound<'py, PyDict>> {
+    if t.len() != values.len() {
+        return Err(PyValueError::new_err("t and values must have the same length"));
+    }
+    let sc = py
+        .allow_threads(|| adv::scalogram(&t, &values, interval, max_columns))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new_bound(py);
+    d.set_item("t", sc.t)?;
+    d.set_item("periods", sc.periods)?;
+    d.set_item("power", sc.power)?;
+    d.set_item("significance", sc.significance)?;
+    d.set_item("coi", sc.coi)?;
+    d.set_item("interval", sc.interval)?;
+    Ok(d)
+}
+
+/// δSNR residuals and band power per satellite, computed in parallel.
+/// Returns {"bands", "interval", "residuals": {sat: {code, t0, t, v, orders}},
+/// "band_power": {sat: {t, power}}}.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[pyo3(signature = (obs, satellites=None, interval=None, bands=None))]
+fn analyze_snr_wavelets<'py>(
+    py: Python<'py>,
+    obs: &PyRinexObsData,
+    satellites: Option<Vec<String>>,
+    interval: Option<f64>,
+    bands: Option<Vec<(f64, f64)>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let sats = satellites
+        .unwrap_or_default()
+        .iter()
+        .map(|s| Satellite::parse(s).ok_or_else(|| PyValueError::new_err(format!("Invalid satellite id '{s}'"))))
+        .collect::<PyResult<Vec<_>>>()?;
+    let dt = interval.or_else(|| obs.inner.interval()).unwrap_or(30.0);
+    let cfg = adv::SnrWaveletConfig { bands: bands.unwrap_or_else(|| adv::period_bands(dt)), ..Default::default() };
+    let data = Arc::clone(&obs.inner);
+    let results = py.allow_threads(|| adv::snr_wavelets(&data, &sats, Some(dt), &cfg));
+
+    let residuals = PyDict::new_bound(py);
+    let power = PyDict::new_bound(py);
+    for w in results {
+        let r = PyDict::new_bound(py);
+        r.set_item("code", &w.code)?;
+        r.set_item("t0", w.t0)?;
+        r.set_item("t", w.t)?;
+        r.set_item("v", w.residual)?;
+        r.set_item("orders", w.orders)?;
+        residuals.set_item(&w.satellite, r)?;
+        if !w.band_t.is_empty() {
+            let p = PyDict::new_bound(py);
+            p.set_item("t", w.band_t)?;
+            p.set_item("power", w.band_power)?;
+            power.set_item(&w.satellite, p)?;
+        }
+    }
+    let d = PyDict::new_bound(py);
+    d.set_item("bands", cfg.bands.iter().map(|b| vec![b.0, b.1]).collect::<Vec<_>>())?;
+    d.set_item("interval", dt)?;
+    d.set_item("residuals", residuals)?;
+    d.set_item("band_power", power)?;
+    Ok(d)
+}
+
 /// Python module definition
 #[cfg(feature = "python")]
 #[pymodule]
@@ -1032,11 +1209,22 @@ fn geoveil_mp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(calculate_azel, m)?)?;
     m.add_function(wrap_pyfunction!(compute_elevation, m)?)?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
+    m.add_function(wrap_pyfunction!(morlet_cwt, m)?)?;
+    m.add_function(wrap_pyfunction!(band_power, m)?)?;
+    m.add_function(wrap_pyfunction!(red_noise_significance, m)?)?;
+    m.add_function(wrap_pyfunction!(period_bands, m)?)?;
+    m.add_function(wrap_pyfunction!(detrend_arc, m)?)?;
+    m.add_function(wrap_pyfunction!(split_arcs, m)?)?;
+    m.add_function(wrap_pyfunction!(fresnel_zone, m)?)?;
+    m.add_function(wrap_pyfunction!(fresnel_map, m)?)?;
+    m.add_function(wrap_pyfunction!(scalogram, m)?)?;
+    m.add_function(wrap_pyfunction!(analyze_snr_wavelets, m)?)?;
     
     // Constants
     m.add("SPEED_OF_LIGHT", crate::utils::constants::SPEED_OF_LIGHT)?;
     m.add("GM_WGS84", crate::utils::constants::GM_WGS84)?;
     m.add("EARTH_RADIUS", crate::utils::constants::EARTH_RADIUS_WGS84)?;
+    m.add("GPS_L1_WAVELENGTH", adv::DEFAULT_WAVELENGTH)?;
     
     Ok(())
 }
