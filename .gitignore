@@ -82,4 +82,5 @@ htmlcov/
 *.csv
 *.json
 *.html
+!docs/index.html
 !tests/data/**

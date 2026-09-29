@@ -22,6 +22,15 @@ Part of the **GeoVeil** suite together with [geoveil-cn0](https://github.com/mil
 
 **Live demo:** [batch.geoveil-rinex.eu](https://batch.geoveil-rinex.eu) — the GeoVeil batch dashboard runs this library in production: per-code MP RMS, cycle-slip counts, SNR-residual wavelet spectra, Fresnel zone maps, and long-term multipath trend monitoring on daily 30 s station data.
 
+**Website:** [miluta7.github.io/geoveil-mp](https://miluta7.github.io/geoveil-mp/)
+
+## What's new in 1.0
+
+- **SNR wavelet analysis in Rust.** Morlet continuous wavelet transform of detrended SNR per satellite, 95 % red-noise significance, and band power in period bands matched to the sampling interval.
+- **First Fresnel zone mapping.** Zone semi-axes and specular-point distance for every track cell, for any antenna height and carrier (Hunegnaw & Teferle 2022, eq. 6).
+- **Same numbers, about 20x faster** than the numpy reference that runs on the GeoVeil platform. Satellites run in parallel and the GIL is released.
+- **License:** PolyForm Noncommercial 1.0.0 with attribution. Versions up to 0.2.1 remain MIT. See [License](#license).
+
 ---
 
 ## Installation
@@ -106,6 +115,30 @@ At 30 s sampling this detects single-cycle L1 slips (GF signature ≈ 0.29 m vs.
 
 `RinexObsData.get_snr_series(satellite, code=None)` returns per-S-code time series (unix-second timestamps, dB-Hz values) — the input for SNR-residual multipath analysis (polynomial detrending, wavelet spectra) without re-parsing the file.
 
+### SNR wavelets and Fresnel zones (1.0)
+
+```python
+w = gm.analyze_snr_wavelets(obs)          # all satellites, in parallel
+w["bands"]                                # [[60, 120], [120, 300], [300, 900], [900, 1800]] at 30 s
+w["band_power"]["R02"]["power"]           # binned scale-averaged power, one series per band
+
+r = w["residuals"]["R02"]                 # detrended linear-amplitude SNR
+s = gm.scalogram(r["t"], r["v"], w["interval"])   # power, periods, significance, coi
+
+a, b, dist = gm.fresnel_zone(15.0, 2.0)   # 2 m antenna, 15 deg, GPS L1 -> (4.896, 1.267, 7.464) m
+zones = gm.fresnel_map([("G05", azimuths, elevations)], antenna_height=2.0)
+```
+
+- SNR is converted from dB-Hz to linear amplitude, split into arcs at gaps, and detrended per arc with the polynomial (order 2 to 9) that leaves the smallest residual RMS
+- Morlet CWT follows the Torrence & Compo (1998) FFT formulation; significance is tested against a lag-1 red-noise background
+- Period bands adapt to the interval because the article's 1 s bands are unreachable at 30 s sampling
+- Fresnel footprints are sampled once per 10° × 10° azimuth/elevation cell above the elevation cutoff
+
+<p align="center">
+  <img src="docs/img/fresnel_map.webp" width="420" alt="First Fresnel zone footprints on the GeoVeil platform">
+  <img src="docs/img/scalogram.webp" width="440" alt="Morlet wavelet scalogram of detrended SNR on the GeoVeil platform">
+</p>
+
 ---
 
 ## Results on real data
@@ -156,6 +189,7 @@ gm.MultipathAnalyzer(
 | `CycleSlip` | `satellite`, `epoch`, `signal`, `system`, `magnitude`, `threshold`, `method` (`"gf"`, `"code_phase"`, `"lli"`) |
 | `SnrSeries` | `satellite`, `system`, `code`, `times`, `values`, `epochs_iso()` |
 | `Sp3Data` | `satellites()`, `get_position(sat, epoch)`, `num_epochs`, `interval` |
+| Wavelets & Fresnel (1.0) | `analyze_snr_wavelets(obs, satellites=None, interval=None, bands=None)`, `scalogram`, `morlet_cwt`, `band_power`, `red_noise_significance`, `period_bands`, `detrend_arc`, `split_arcs`, `fresnel_zone`, `fresnel_map`, `GPS_L1_WAVELENGTH` |
 | Functions | `read_rinex_obs`, `read_rinex_obs_bytes`, `read_sp3`, `calculate_azel`, `compute_elevation`, `get_frequency`, `get_wavelength`, `version` |
 
 Supported input: RINEX v2 / v3 / v4 observation files, SP3-c/d orbits, broadcast ephemerides (Keplerian + GLONASS RK4).
@@ -175,6 +209,9 @@ flowchart LR
     F --> G[Per-signal statistics<br/>RMS · weighted RMS]
     H[SP3 orbits] -.-> I[Elevations / azimuths]
     I -.-> G
+    B --> J[SNR detrend<br/>per arc]
+    J --> K[Morlet CWT<br/>band power · significance]
+    I -.-> L[First Fresnel zones]
 ```
 
 ---
@@ -211,7 +248,7 @@ Free for research, education, personal and other non-commercial use, provided yo
   author  = {Dulea-Flueras, Miluta},
   title   = {geoveil-mp: GNSS Code Multipath Analysis Library},
   year    = {2026},
-  version = {0.2.0},
+  version = {1.0.0},
   url     = {https://github.com/miluta7/geoveil-mp},
   license = {PolyForm-Noncommercial-1.0.0}
 }

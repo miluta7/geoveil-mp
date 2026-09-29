@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>geoveil-mp</title>
+<meta name="description" content="geoveil-mp 1.0: GNSS code multipath, cycle slips, SNR wavelets and first Fresnel zone mapping from RINEX. Rust core, Python API.">
+<meta property="og:title" content="geoveil-mp 1.0">
+<meta property="og:description" content="Measure multipath. Map where it comes from. GNSS code multipath, SNR wavelets and Fresnel zones in Rust, called from Python.">
+<meta property="og:image" content="https://miluta7.github.io/geoveil-mp/img/fresnel_map.webp">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..650;1,8..60,400..500&display=swap">
+<style>
+/* Layout: surveyor's field sheet. A narrow margin column of labels runs beside a wide content column; the hero pairs the thesis with a live Fresnel instrument drawn to scale. */
+:root {
+  --paper: #F0F2ED;
+  --panel: #E4E8E1;
+  --ink: #111916;
+  --ink-2: #4A5651;
+  --rule: #C5CCC3;
+  --direct: #2233CC;
+  --reflect: #B65A0B;
+  --el1: #C95A12;
+  --el2: #B03E68;
+  --el3: #6547BE;
+  --el4: #2233CC;
+  --shot: #FFFFFF;
+  --shot-filter: none;
+  --code-bg: #101715;
+  --code-fg: #D9E1DC;
+  --code-dim: #7E8C86;
+  --code-kw: #9FB0FF;
+  --code-str: #F0B071;
+  --code-num: #E9A0C4;
+  --code-fn: #8FDCC2;
+  --on-accent: #FFFFFF;
+  --lb-fg: #E4E9E5;
+  --lb-bg: #05080A;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --step--1: 0.8125rem;
+  --step-0: 1.0625rem;
+  --step-1: 1.3rem;
+  --step-2: clamp(1.6rem, 1.1rem + 1.8vw, 2.4rem);
+  --step-3: clamp(2.5rem, 1.2rem + 4.6vw, 4.9rem);
+  --gutter: clamp(16px, 4vw, 48px);
+  --maxw: 1240px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0C1114; --panel: #141B20; --ink: #E4E9E5; --ink-2: #9BA7A2; --rule: #27323A;
+    --direct: #8E9CFF; --reflect: #F2A55B;
+    --el1: #F29A4A; --el2: #EA7FA3; --el3: #A890FF; --el4: #8E9CFF;
+    --shot: #FFFFFF; --shot-filter: brightness(0.93);
+    --code-bg: #161E23; --code-fg: #D9E1DC; --code-dim: #7E8C86;
+    --code-kw: #9FB0FF; --code-str: #F0B071; --code-num: #E9A0C4; --code-fn: #8FDCC2;
+    --on-accent: #0C1114;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0C1114; --panel: #141B20; --ink: #E4E9E5; --ink-2: #9BA7A2; --rule: #27323A;
+  --direct: #8E9CFF; --reflect: #F2A55B;
+  --el1: #F29A4A; --el2: #EA7FA3; --el3: #A890FF; --el4: #8E9CFF;
+  --shot: #FFFFFF; --shot-filter: brightness(0.93);
+  --code-bg: #161E23; --code-fg: #D9E1DC; --code-dim: #7E8C86;
+  --code-kw: #9FB0FF; --code-str: #F0B071; --code-num: #E9A0C4; --code-fn: #8FDCC2;
+  --on-accent: #0C1114;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  font-optical-sizing: auto;
+}
+img { max-width: 100%; display: block; }
+a { color: inherit; text-decoration-color: var(--rule); text-underline-offset: 0.2em; }
+a:hover { text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--direct); outline-offset: 3px; border-radius: 2px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 800; line-height: 1.02; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+code, kbd, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+
+.wrap { max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gutter); }
+.label {
+  font-family: var(--f-display);
+  font-stretch: 112%;
+  font-weight: 650;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* ---------- top bar ---------- */
+.bar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+.bar .wrap { display: flex; align-items: center; gap: 24px; min-height: 56px; flex-wrap: wrap; }
+.mark { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
+.mark b { font-family: var(--f-display); font-stretch: 125%; font-weight: 850; font-size: 1.05rem; letter-spacing: -0.01em; }
+.chip {
+  font-family: var(--f-mono); font-size: 0.72rem; padding: 2px 8px; border-radius: 99px;
+  border: 1px solid var(--direct); color: var(--direct);
+}
+.bar nav { display: flex; gap: 20px; margin-left: auto; flex-wrap: wrap; }
+.bar nav a { font-family: var(--f-display); font-weight: 560; font-size: 0.86rem; text-decoration: none; color: var(--ink-2); }
+.bar nav a:hover { color: var(--ink); }
+
+/* ---------- hero ---------- */
+.hero { padding-block: clamp(40px, 7vw, 88px) clamp(48px, 7vw, 96px); }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(28px, 4vw, 64px); align-items: start; }
+.thesis { display: grid; gap: 28px; padding-top: 8px; }
+.thesis h1 { font-size: var(--step-3); font-stretch: 118%; letter-spacing: -0.025em; }
+.thesis h1 em {
+  display: block; margin-top: 0.12em;
+  font-family: var(--f-body); font-style: italic; font-weight: 420; font-stretch: normal;
+  letter-spacing: -0.015em; color: var(--reflect);
+}
+.lede { font-size: 1.16rem; line-height: 1.55; max-width: 34em; color: var(--ink); }
+.lede b { font-weight: 600; }
+.install {
+  display: flex; align-items: center; gap: 12px; max-width: 26rem;
+  padding: 12px 12px 12px 16px; border-radius: 10px;
+  background: var(--code-bg); color: var(--code-fg); font-family: var(--f-mono); font-size: 0.95rem;
+}
+.install span { color: var(--code-dim); user-select: none; }
+.install code { flex: 1; min-width: 0; font-size: inherit; overflow-x: auto; white-space: nowrap; }
+.copy {
+  font: 600 0.72rem var(--f-display); letter-spacing: 0.08em; text-transform: uppercase;
+  border: 1px solid color-mix(in srgb, var(--code-fg) 30%, transparent); background: transparent; color: var(--code-fg);
+  border-radius: 6px; padding: 6px 10px; cursor: pointer;
+}
+.copy:hover { border-color: var(--code-fg); }
+.ctas { display: flex; gap: 14px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 8px;
+  font: 650 0.92rem var(--f-display); text-decoration: none; border: 1px solid var(--ink);
+}
+.btn.primary { background: var(--ink); color: var(--paper); }
+.btn:hover { transform: translateY(-1px); }
+.facts { display: flex; gap: 8px 22px; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid var(--rule); }
+.facts div { display: grid; gap: 2px; padding-top: 14px; }
+.facts b { font-family: var(--f-display); font-stretch: 110%; font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ---------- Fresnel instrument ---------- */
+.instrument {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 14px;
+  padding: clamp(14px, 2vw, 22px); display: grid; gap: 16px; min-width: 0;
+}
+.instrument header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.instrument h2 { font-size: 1.05rem; font-stretch: 112%; font-weight: 750; }
+.instrument .cite { font-family: var(--f-mono); font-size: 0.72rem; color: var(--ink-2); }
+.inst-grid { display: grid; grid-template-columns: minmax(0, 1fr) 13.5rem; gap: 18px; align-items: start; }
+.plan { position: relative; aspect-ratio: 1; max-width: 100%; }
+.plan canvas, .profile canvas { width: 100%; height: 100%; display: block; }
+.profile { aspect-ratio: 16 / 4.6; max-width: 100%; border-top: 1px dashed var(--rule); padding-top: 10px; }
+.controls { display: grid; gap: 16px; }
+.ctl { display: grid; gap: 6px; }
+.ctl label { display: flex; justify-content: space-between; font-family: var(--f-display); font-weight: 600; font-size: 0.8rem; }
+.ctl output { font-family: var(--f-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--direct); }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { justify-content: center; padding: 6px 0; cursor: pointer; font-family: var(--f-mono); font-size: 0.78rem; font-weight: 500; }
+.seg input:checked + label { background: var(--ink); color: var(--paper); }
+.seg input:focus-visible + label { outline: 2px solid var(--direct); outline-offset: -2px; }
+.readout { display: grid; gap: 8px; border-top: 1px solid var(--rule); padding-top: 12px; }
+.readout div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.readout dt { font-size: 0.82rem; color: var(--ink-2); }
+.readout dd { margin: 0; font-family: var(--f-mono); font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.readout dd small { font-weight: 400; color: var(--ink-2); font-size: 0.75rem; }
+.legend { display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 16px; font-family: var(--f-mono); font-size: 0.72rem; color: var(--ink-2); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.echo {
+  font-family: var(--f-mono); font-size: 0.8rem; background: var(--code-bg); color: var(--code-fg);
+  border-radius: 8px; padding: 10px 12px; overflow-x: auto; white-space: nowrap;
+}
+.echo .r { color: var(--code-str); }
+.formula { font-family: var(--f-body); font-style: italic; font-size: 0.98rem; color: var(--ink-2); }
+.formula sub, .formula sup { font-size: 0.7em; }
+
+/* ---------- sections ---------- */
+section.sheet { border-top: 1px solid var(--rule); padding-block: clamp(48px, 7vw, 96px); }
+.sheet .wrap { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: clamp(20px, 3vw, 48px); }
+.sheet .margin { display: grid; gap: 8px; align-content: start; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 80px); }
+.sheet .margin .mono { font-size: 0.74rem; color: var(--ink-2); }
+.body { display: grid; gap: clamp(28px, 4vw, 44px); min-width: 0; }
+.body > *, .instrument > *, .thesis > *, .inst-grid > * { min-width: 0; }
+.body > header { display: grid; gap: 14px; max-width: 46rem; }
+.body h2 { font-size: var(--step-2); font-stretch: 115%; letter-spacing: -0.02em; }
+.body > header p { color: var(--ink-2); font-size: 1.1rem; max-width: 40em; }
+
+/* what's new */
+.news { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(20px, 3vw, 40px); }
+.news article { display: grid; gap: 12px; align-content: start; padding-top: 16px; border-top: 2px solid var(--ink); }
+.news h3 { font-size: 1.3rem; font-stretch: 112%; font-weight: 780; }
+.news p { color: var(--ink); }
+.news .api { font-family: var(--f-mono); font-size: 0.8rem; color: var(--direct); display: flex; gap: 6px 12px; flex-wrap: wrap; }
+.measure { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+th { font-family: var(--f-display); font-stretch: 112%; font-weight: 650; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+td.num { font-family: var(--f-mono); font-size: 0.92rem; white-space: nowrap; }
+td.num.win { color: var(--direct); font-weight: 700; }
+caption { caption-side: bottom; text-align: left; padding-top: 10px; font-size: 0.86rem; color: var(--ink-2); }
+
+/* gallery */
+.gallery { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: clamp(14px, 2vw, 22px); }
+.shot { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.shot .frame {
+  flex: 1; display: block; width: 100%; padding: 0; cursor: zoom-in;
+  background: var(--shot); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 0 var(--rule), 0 18px 40px -28px color-mix(in srgb, var(--ink) 55%, transparent);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.shot .frame:hover { transform: translateY(-2px); }
+.shot img { width: 100%; height: 100%; object-fit: contain; filter: var(--shot-filter); }
+.shot figcaption { font-size: 0.92rem; line-height: 1.5; color: var(--ink-2); max-width: 44em; }
+.shot figcaption b { color: var(--ink); font-weight: 600; }
+.c12 { grid-column: span 12; } .c8 { grid-column: span 8; } .c7 { grid-column: span 7; }
+.c6 { grid-column: span 6; } .c5 { grid-column: span 5; } .c4 { grid-column: span 4; }
+.r-hero .frame { aspect-ratio: 16 / 10; }
+.r-wide .frame { aspect-ratio: 2000 / 780; }
+.r-elev .frame { aspect-ratio: 1800 / 636; }
+.r-band .frame { aspect-ratio: 4 / 1; }
+.r-trend .frame { aspect-ratio: 1800 / 560; }
+.platform-link { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-family: var(--f-display); font-weight: 600; }
+
+/* pipeline */
+.lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(24px, 4vw, 56px); }
+.lane h3 { font-size: 1.15rem; font-stretch: 112%; font-weight: 760; display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.lane h3 i { width: 26px; height: 3px; border-radius: 2px; background: var(--direct); }
+.lane.snr h3 i { background: var(--reflect); }
+.lane ol { list-style: none; margin: 0; padding: 0; display: grid; counter-reset: s; }
+.lane li { counter-increment: s; position: relative; padding: 12px 0 12px 2.6rem; border-bottom: 1px solid var(--rule); }
+.lane li::before { content: counter(s, decimal-leading-zero); position: absolute; left: 0; top: 15px; font-family: var(--f-mono); font-size: 0.78rem; color: var(--ink-2); }
+.lane li b { font-weight: 600; }
+.eq {
+  font-family: var(--f-body); font-style: italic; font-size: clamp(1.05rem, 0.9rem + 0.8vw, 1.45rem);
+  padding: 18px 20px; border-left: 3px solid var(--direct); background: var(--panel); border-radius: 0 10px 10px 0;
+  overflow-x: auto; white-space: nowrap;
+}
+.eq sub, .eq sup { font-size: 0.62em; }
+.eq .note { display: block; font-style: normal; font-family: var(--f-mono); font-size: 0.72rem; color: var(--ink-2); margin-top: 8px; white-space: normal; }
+
+/* code */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); }
+.tabs button {
+  font: 650 0.84rem var(--f-display); padding: 10px 14px; border: 0; background: none; color: var(--ink-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer;
+}
+.tabs button[aria-selected="true"], .tabs .tabname { color: var(--ink); border-bottom-color: var(--ink); }
+.tabs .tabname { font: 650 0.84rem var(--f-mono); padding: 10px 0; border-bottom: 2px solid; margin-bottom: -1px; }
+.tabs .copy { align-self: center; }
+pre.code {
+  margin: 0; padding: clamp(16px, 2.4vw, 26px); border-radius: 0 0 12px 12px; background: var(--code-bg); color: var(--code-fg);
+  font-family: var(--f-mono); font-size: 0.86rem; line-height: 1.65; overflow-x: auto; tab-size: 4;
+}
+.code .c { color: var(--code-dim); } .code .k { color: var(--code-kw); } .code .s { color: var(--code-str); }
+.code .n { color: var(--code-num); } .code .f { color: var(--code-fn); }
+.api-table td:first-child { font-family: var(--f-mono); font-size: 0.86rem; white-space: nowrap; color: var(--direct); }
+
+/* license */
+.terms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 2.5vw, 28px); }
+.term { border: 1px solid var(--rule); border-radius: 14px; padding: clamp(20px, 3vw, 32px); display: grid; gap: 14px; align-content: start; }
+.term.paid { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.term.paid .label, .term.paid p { color: color-mix(in srgb, var(--paper) 78%, transparent); }
+.term h3 { font-size: 1.6rem; font-stretch: 115%; letter-spacing: -0.015em; }
+.term ul { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
+.mail { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-family: var(--f-mono); font-size: 0.95rem; }
+.mail span { user-select: all; border-bottom: 1px solid currentColor; }
+.term.paid .copy { color: var(--paper); border-color: color-mix(in srgb, var(--paper) 40%, transparent); }
+.fineprint { font-size: 0.9rem; color: var(--ink-2); max-width: 46em; }
+
+/* footer */
+footer { border-top: 1px solid var(--rule); padding-block: 32px 48px; }
+footer .wrap { display: flex; justify-content: space-between; gap: 16px 32px; flex-wrap: wrap; font-size: 0.9rem; color: var(--ink-2); }
+footer nav { display: flex; gap: 18px; flex-wrap: wrap; font-family: var(--f-display); font-weight: 560; }
+
+/* lightbox */
+dialog {
+  border: 0; padding: 0; background: transparent; max-width: min(96vw, 1800px); width: 100%;
+  color: var(--lb-fg);
+}
+dialog::backdrop { background: color-mix(in srgb, var(--lb-bg) 86%, transparent); }
+dialog figure { margin: 0; display: grid; gap: 12px; }
+dialog img { width: 100%; max-height: 84vh; object-fit: contain; background: var(--shot); border-radius: 10px; }
+dialog figcaption { color: var(--lb-fg); font-size: 0.95rem; display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+dialog button { font: 650 0.8rem var(--f-display); background: var(--lb-fg); color: var(--lb-bg); border: 0; border-radius: 6px; padding: 8px 12px; cursor: pointer; flex: none; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1020px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); }
+  .sheet .wrap { grid-template-columns: minmax(0, 1fr); }
+  .sheet .margin { position: static; grid-auto-flow: column; justify-content: start; gap: 16px; }
+}
+@media (max-width: 760px) {
+  .news, .lanes, .terms { grid-template-columns: minmax(0, 1fr); }
+  .gallery > * { grid-column: span 12; }
+  .inst-grid { grid-template-columns: minmax(0, 1fr); }
+  .bar nav { display: none; }
+  .r-band .frame { aspect-ratio: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  .btn:hover, .shot .frame:hover { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <a class="mark" href="#top"><b>geoveil-mp</b><span class="chip">v1.0.0</span></a>
+    <nav aria-label="Sections">
+      <a href="#new">What's new</a>
+      <a href="#platform">Platform</a>
+      <a href="#pipeline">Method</a>
+      <a href="#api">API</a>
+      <a href="#license">License</a>
+      <a href="https://github.com/miluta7/geoveil-mp">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="wrap">
+    <div class="thesis">
+      <span class="label">GNSS code multipath · Rust core · Python API</span>
+      <h1>Measure multipath. <em>Map where it comes from.</em></h1>
+      <p class="lede">geoveil-mp reads RINEX 2, 3 and 4 and estimates code multipath for every pseudorange signal on GPS, GLONASS, Galileo, BeiDou, QZSS and NavIC, with cycle slips detected per carrier. <b>Version 1.0 adds SNR wavelet analysis and first Fresnel zone mapping</b>, so the numbers point back to the ground that caused them.</p>
+      <div class="install" role="group" aria-label="Install command">
+        <span>$</span><code id="pip">pip install geoveil-mp</code>
+        <button class="copy" type="button" data-copy="pip install geoveil-mp">Copy</button>
+      </div>
+      <div class="ctas">
+        <a class="btn primary" href="#api">Read the API</a>
+        <a class="btn" href="https://batch.geoveil-rinex.eu">Open the live platform</a>
+      </div>
+      <div class="facts" aria-label="Release facts">
+        <div><b>20×</b><span class="label">faster SNR wavelets</span></div>
+        <div><b>1.8e-15</b><span class="label">max difference vs numpy</span></div>
+        <div><b>10</b><span class="label">new Python functions</span></div>
+      </div>
+    </div>
+
+    <div class="instrument" aria-labelledby="inst-title">
+      <header>
+        <h2 id="inst-title">First Fresnel zone explorer</h2>
+        <span class="cite">eq. 6 · Hunegnaw &amp; Teferle, Sensors 2022</span>
+      </header>
+      <div class="inst-grid">
+        <div class="plan"><canvas id="plan" role="img" aria-label="Plan view of first Fresnel zones around the antenna for illustrative satellite tracks, coloured by elevation."></canvas></div>
+        <div class="controls">
+          <div class="ctl">
+            <label for="h">Antenna height <output id="h-out" for="h">2.0 m</output></label>
+            <input id="h" type="range" min="0.5" max="6" step="0.1" value="2">
+          </div>
+          <div class="ctl">
+            <label for="el">Satellite elevation <output id="el-out" for="el">15°</output></label>
+            <input id="el" type="range" min="5" max="90" step="1" value="15">
+          </div>
+          <div class="ctl">
+            <span class="label" id="band-label">Carrier</span>
+            <div class="seg" role="radiogroup" aria-labelledby="band-label">
+              <input type="radio" name="band" id="band-l1" value="L1" checked><label for="band-l1">L1</label>
+              <input type="radio" name="band" id="band-l2" value="L2"><label for="band-l2">L2</label>
+              <input type="radio" name="band" id="band-l5" value="L5"><label for="band-l5">L5</label>
+            </div>
+          </div>
+          <dl class="readout">
+            <div><dt>Semi-major <i>a</i></dt><dd id="ro-a">4.896 <small>m</small></dd></div>
+            <div><dt>Semi-minor <i>b</i></dt><dd id="ro-b">1.267 <small>m</small></dd></div>
+            <div><dt>Specular distance <i>d</i></dt><dd id="ro-d">7.464 <small>m</small></dd></div>
+          </dl>
+          <div class="legend" aria-label="Elevation colours">
+            <span><i style="background:var(--el1)"></i>&lt;15°</span>
+            <span><i style="background:var(--el2)"></i>15–30°</span>
+            <span><i style="background:var(--el3)"></i>30–60°</span>
+            <span><i style="background:var(--el4)"></i>&gt;60°</span>
+          </div>
+        </div>
+      </div>
+      <div class="profile"><canvas id="profile" role="img" aria-label="Side view: antenna, direct and reflected rays, and the first Fresnel zone on the ground, drawn to scale."></canvas></div>
+      <div class="echo" aria-live="polite"><span id="echo-call">gm.fresnel_zone(15.0, 2.0)</span>  <span class="r" id="echo-ret"># → (4.896, 1.267, 7.464)</span></div>
+      <p class="formula">b = √(λh / sin θ + (λ / 2 sin θ)²), a = b / sin θ, d = h / tan θ. Satellite tracks are illustrative; the geometry is the library's.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="new">
+  <div class="wrap">
+    <div class="margin"><span class="label">Release</span><span class="mono">1.0.0 · stable</span></div>
+    <div class="body">
+      <header>
+        <h2>What 1.0 adds</h2>
+        <p>The wavelet and Fresnel analysis that the GeoVeil batch platform ran in numpy now lives in the library, in Rust, with the Python API you already use. Everything from 0.2 works as before.</p>
+      </header>
+      <div class="news">
+        <article>
+          <span class="label">SNR residuals</span>
+          <h3>Wavelet spectra per satellite</h3>
+          <p>SNR is converted from dB-Hz to linear amplitude, detrended arc by arc, and passed through a Morlet transform. You get band power in periods matched to your sampling interval and a 95 % red-noise significance level.</p>
+          <div class="api"><span>analyze_snr_wavelets</span><span>scalogram</span><span>band_power</span></div>
+        </article>
+        <article>
+          <span class="label">Reflector geometry</span>
+          <h3>First Fresnel zones</h3>
+          <p>For every 10° × 10° cell a satellite crosses, the library returns the zone's semi-axes and its distance from the antenna, for your antenna height and carrier. Large multipath now has an address on the ground.</p>
+          <div class="api"><span>fresnel_zone</span><span>fresnel_map</span></div>
+        </article>
+        <article>
+          <span class="label">Parity</span>
+          <h3>Same numbers, 20× faster</h3>
+          <p>Each function was checked against the numpy reference on synthetic series and on a real station hour. Satellites run in parallel and the GIL is released, so thread pools keep working.</p>
+          <div class="api"><span>morlet_cwt</span><span>detrend_arc</span><span>split_arcs</span></div>
+        </article>
+      </div>
+      <div class="measure">
+        <table>
+          <thead><tr><th>Measured on</th><th>numpy reference</th><th>geoveil-mp 1.0</th></tr></thead>
+          <tbody>
+            <tr><td>SNR wavelets, 51 satellites, 3,600 epochs at 1 Hz</td><td class="num">7.05 s</td><td class="num win">0.35 s</td></tr>
+            <tr><td>Largest relative difference in wavelet power</td><td class="num">reference</td><td class="num win">1.8 × 10⁻¹⁵</td></tr>
+            <tr><td>Largest relative difference in detrended residuals</td><td class="num">reference</td><td class="num win">4.3 × 10⁻¹²</td></tr>
+          </tbody>
+          <caption>Linux container, release build, same RINEX 3.04 file for both. Parity script and results are in the 1.0.0 pull request.</caption>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="platform">
+  <div class="wrap">
+    <div class="margin"><span class="label">In production</span><span class="mono">HAR1 · 2025-12-31 · 30 s</span></div>
+    <div class="body">
+      <header>
+        <h2>Running on batch.geoveil-rinex.eu</h2>
+        <p>The GeoVeil batch platform runs this analysis on every station day it receives. These screenshots show one day of the HAR1 station, a daily 30 s RINEX file. Select a chart to see it full size.</p>
+      </header>
+      <div class="gallery">
+        <figure class="shot c8 r-hero">
+          <button class="frame" type="button" data-full="img/hero_overview.webp"><img src="img/hero_overview.webp" width="2000" height="1250" alt="GeoVeil platform, multipath overview tab for HAR1 on 31 December 2025, with stat cards and a bar chart of multipath RMS per signal code."></button>
+          <figcaption><b>Multipath overview.</b> 11 signals, 199,548 multipath estimates and 2,938 cycle slips. The worst signal, GLONASS M3Q, sits at 0.395 m RMS.</figcaption>
+        </figure>
+        <figure class="shot c4">
+          <button class="frame" type="button" data-full="img/fresnel_map.webp"><img src="img/fresnel_map.webp" width="1240" height="1084" alt="Polar map of first Fresnel zone footprints around the antenna, coloured by elevation band."></button>
+          <figcaption><b>Fresnel footprints.</b> 3,029 zones for a 1 m antenna. The empty wedge to the north matches the gap in satellite coverage.</figcaption>
+        </figure>
+        <figure class="shot c12 r-wide">
+          <button class="frame" type="button" data-full="img/scalogram.webp"><img src="img/scalogram.webp" width="2000" height="780" alt="Morlet wavelet scalogram of detrended SNR for satellite R02, period against time, with significance marks and cone of influence."></button>
+          <figcaption><b>Morlet scalogram, GLONASS R02.</b> White marks pass the 95 % red-noise test. The dashed curve is the cone of influence, below which edge effects dominate.</figcaption>
+        </figure>
+        <figure class="shot c4">
+          <button class="frame" type="button" data-full="img/skyplot.webp"><img src="img/skyplot.webp" width="1240" height="1094" alt="Skyplot of Galileo E1 multipath magnitude along satellite tracks, most points green, larger values at low elevation."></button>
+          <figcaption><b>Multipath skyplot, Galileo E1.</b> Low passes in the north-west and east carry most of the large values.</figcaption>
+        </figure>
+        <figure class="shot c8 r-elev">
+          <button class="frame" type="button" data-full="img/mp_vs_elevation.webp"><img src="img/mp_vs_elevation.webp" width="1800" height="636" alt="Line chart of multipath RMS against elevation in 2 degree bins for GPS, GLONASS and Galileo L1 codes."></button>
+          <figcaption><b>RMS against elevation.</b> 2° bins, one L1 code per constellation.</figcaption>
+        </figure>
+        <figure class="shot c6 r-band">
+          <button class="frame" type="button" data-full="img/wavelet_band_power.webp"><img src="img/wavelet_band_power.webp" width="1800" height="391" alt="Scale-averaged wavelet power over time for four period bands from 60 seconds to 30 minutes."></button>
+          <figcaption><b>Band power, R02.</b> Four period bands from 60 s to 30 min.</figcaption>
+        </figure>
+        <figure class="shot c6 r-band">
+          <button class="frame" type="button" data-full="img/cycle_slips.webp"><img src="img/cycle_slips.webp" width="1800" height="447" alt="Bar chart of cycle slips counted per carrier-phase signal."></button>
+          <figcaption><b>Cycle slips</b> counted per carrier-phase signal.</figcaption>
+        </figure>
+        <figure class="shot c12 r-trend">
+          <button class="frame" type="button" data-full="img/mp_longterm_trend.webp"><img src="img/mp_longterm_trend.webp" width="1800" height="560" alt="A year of daily multipath RMS for HAR1 with 30-day rolling medians per constellation, all below a dashed 0.50 metre line."></button>
+          <figcaption><b>A year of HAR1.</b> Daily RMS per constellation with 30-day rolling medians, all well under the 0.50 m alert line.</figcaption>
+        </figure>
+      </div>
+      <p class="platform-link"><a class="btn" href="https://batch.geoveil-rinex.eu">Explore the platform</a><span class="mono" style="color:var(--ink-2)">No sign-in needed to browse.</span></p>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="pipeline">
+  <div class="wrap">
+    <div class="margin"><span class="label">Method</span><span class="mono">Anubis / TEQC style</span></div>
+    <div class="body">
+      <header>
+        <h2>From observables to reflectors</h2>
+        <p>Two processing lanes share one parsed file. The code lane measures how much multipath each signal carries. The SNR lane finds its periods and the Fresnel step places it around the antenna.</p>
+      </header>
+      <div class="eq" role="math" aria-label="MP sub k equals P sub k minus one plus two over alpha minus one times Phi sub i plus two over alpha minus one times Phi sub j, with alpha equal to f sub i over f sub j squared">
+        MP<sub>k</sub> = P<sub>k</sub> − (1 + 2/(α−1)) Φ<sub>i</sub> + (2/(α−1)) Φ<sub>j</sub>, &nbsp; α = (f<sub>i</sub> / f<sub>j</sub>)²
+        <span class="note">Φi is the phase on the code's own band, Φj a partner band from a fixed per-system priority list. GLONASS uses each satellite's channel number from the header.</span>
+      </div>
+      <div class="lanes">
+        <div class="lane">
+          <h3><i></i>Code multipath</h3>
+          <ol>
+            <li><b>Parse RINEX 2, 3 or 4</b> into code, phase and SNR per satellite and epoch.</li>
+            <li><b>Form MP<sub>k</sub></b> for every pseudorange code with a deterministic phase pairing.</li>
+            <li><b>Detect cycle slips</b> with geometry-free, code-phase and loss-of-lock tests whose thresholds scale with the interval.</li>
+            <li><b>Remove the ambiguity bias per arc</b>, resetting at gaps, slips and jumps.</li>
+            <li><b>Report per signal</b>: RMS, elevation-weighted RMS and slip counts, with elevations from SP3 or broadcast orbits.</li>
+          </ol>
+        </div>
+        <div class="lane snr">
+          <h3><i></i>SNR and reflectors <span class="chip">new</span></h3>
+          <ol>
+            <li><b>Pick the band-1 S observable</b> for each satellite.</li>
+            <li><b>Convert dB-Hz to linear amplitude</b> and split into arcs at gaps.</li>
+            <li><b>Detrend each arc</b> with the polynomial of order 2 to 9 that leaves the smallest residual.</li>
+            <li><b>Run the Morlet transform</b> and average power into four period bands, with red-noise significance.</li>
+            <li><b>Place first Fresnel zones</b> along each track for your antenna height and carrier.</li>
+          </ol>
+        </div>
+      </div>
+      <div class="measure">
+        <table>
+          <thead><tr><th>Constellation</th><th>Best signal</th><th>RMS</th><th>Worst signal</th><th>RMS</th></tr></thead>
+          <tbody>
+            <tr><td>Galileo</td><td>E5 AltBOC (M8X)</td><td class="num">0.165 m</td><td>E5b (M7X)</td><td class="num">0.395 m</td></tr>
+            <tr><td>GPS</td><td>L2C (M2X)</td><td class="num">0.312 m</td><td>L1 C/A (M1C)</td><td class="num">0.342 m</td></tr>
+            <tr><td>BeiDou</td><td>B2I (M7I)</td><td class="num">0.295 m</td><td>B3I (M6I)</td><td class="num">0.354 m</td></tr>
+            <tr><td>GLONASS</td><td>L2 P (M2P)</td><td class="num">0.318 m</td><td>L1 C/A (M1C)</td><td class="num">0.566 m</td></tr>
+          </tbody>
+          <caption>24 h of BOR1 (EPN, Poland), 30 s multi-GNSS RINEX 3, default settings. The ranking reproduces published station-monitoring results.</caption>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="api">
+  <div class="wrap">
+    <div class="margin"><span class="label">API</span><span class="mono">Python 3.9+ · Rust 1.75+</span></div>
+    <div class="body">
+      <header>
+        <h2>Five lines to a station report</h2>
+        <p>Install from PyPI, point it at a RINEX file, and read plain Python lists and dicts back. The Rust crate exposes the same functions.</p>
+      </header>
+      <div>
+        <div class="tabs" role="tablist" aria-label="Language">
+          <button role="tab" id="tab-py" aria-controls="code-py" aria-selected="true" type="button">Python</button>
+          <button role="tab" id="tab-rs" aria-controls="code-rs" aria-selected="false" type="button" tabindex="-1">Rust</button>
+        </div>
+<pre class="code" id="code-py" role="tabpanel" aria-labelledby="tab-py"><span class="k">import</span> geoveil_mp <span class="k">as</span> gm
+
+obs = gm.<span class="f">read_rinex_obs</span>(<span class="s">"HAR100ROU_R_20253650000_01D_30S_MO.rnx"</span>)
+
+<span class="c"># Code multipath and cycle slips per signal</span>
+res = gm.<span class="f">MultipathAnalyzer</span>(obs, <span class="n">10.0</span>, [<span class="s">"G"</span>, <span class="s">"R"</span>, <span class="s">"E"</span>]).<span class="f">analyze</span>()
+<span class="k">for</span> s <span class="k">in</span> res.statistics:
+    <span class="f">print</span>(s.signal, <span class="f">round</span>(s.rms, <span class="n">3</span>), s.cycle_slips)   <span class="c"># GLOM3Q 0.395 ...</span>
+
+<span class="c"># New in 1.0: SNR wavelets for every satellite, in parallel</span>
+w = gm.<span class="f">analyze_snr_wavelets</span>(obs)
+w[<span class="s">"bands"</span>]                       <span class="c"># [[60, 120], [120, 300], [300, 900], [900, 1800]]</span>
+w[<span class="s">"band_power"</span>][<span class="s">"R02"</span>][<span class="s">"power"</span>]  <span class="c"># binned power, one series per band</span>
+
+r = w[<span class="s">"residuals"</span>][<span class="s">"R02"</span>]
+scal = gm.<span class="f">scalogram</span>(r[<span class="s">"t"</span>], r[<span class="s">"v"</span>], w[<span class="s">"interval"</span>])   <span class="c"># power, significance, coi</span>
+
+<span class="c"># First Fresnel zone for a 2 m antenna at 15° elevation, GPS L1</span>
+a, b, dist = gm.<span class="f">fresnel_zone</span>(<span class="n">15.0</span>, <span class="n">2.0</span>)                    <span class="c"># (4.896, 1.267, 7.464) m</span></pre>
+<pre class="code" id="code-rs" role="tabpanel" aria-labelledby="tab-rs" hidden><span class="k">use</span> geoveil_mp::analysis::advanced::{fresnel_zone, morlet_cwt, snr_wavelets, SnrWaveletConfig, DJ, DEFAULT_WAVELENGTH};
+<span class="k">use</span> geoveil_mp::RinexObsReader;
+
+<span class="k">let</span> obs = RinexObsReader::<span class="f">new</span>().<span class="f">read</span>(<span class="s">"HAR100ROU_R_20253650000_01D_30S_MO.rnx"</span>)?;
+
+<span class="c">// SNR wavelets for all satellites (rayon-parallel)</span>
+<span class="k">let</span> sats = <span class="f">snr_wavelets</span>(&amp;obs, &amp;[], <span class="k">None</span>, &amp;SnrWaveletConfig::<span class="f">default</span>());
+
+<span class="c">// Band power of one residual series</span>
+<span class="k">let</span> cwt = <span class="f">morlet_cwt</span>(&amp;sats[<span class="n">0</span>].residual, <span class="n">30.0</span>, DJ, <span class="k">None</span>);
+<span class="k">let</span> power = cwt.<span class="f">band_power</span>((<span class="n">120.0</span>, <span class="n">300.0</span>));
+
+<span class="c">// First Fresnel zone: a, b and distance in metres</span>
+<span class="k">let</span> z = <span class="f">fresnel_zone</span>(<span class="n">15.0</span>, <span class="n">2.0</span>, DEFAULT_WAVELENGTH);</pre>
+      </div>
+      <div class="measure">
+        <table class="api-table">
+          <thead><tr><th>New in 1.0</th><th>Returns</th></tr></thead>
+          <tbody>
+            <tr><td>analyze_snr_wavelets(obs)</td><td>Residuals and binned band power per satellite, in the layout the platform stores</td></tr>
+            <tr><td>scalogram(t, values, interval)</td><td>Power matrix, periods, 95 % significance and cone of influence for the longest arc</td></tr>
+            <tr><td>morlet_cwt(y, dt)</td><td>Wavelet power, scales, Fourier periods and cone of influence</td></tr>
+            <tr><td>band_power(y, dt, bands)</td><td>Scale-averaged power for each (low, high) period band</td></tr>
+            <tr><td>red_noise_significance(y, dt, periods)</td><td>Lag-1 red-noise significance level per period</td></tr>
+            <tr><td>period_bands(dt)</td><td>The four default bands for a sampling interval</td></tr>
+            <tr><td>detrend_arc(t, values)</td><td>Residual and the chosen polynomial order</td></tr>
+            <tr><td>split_arcs(times, dt)</td><td>(start, stop) index pairs of continuous arcs</td></tr>
+            <tr><td>fresnel_zone(elevation, height)</td><td>Semi-major axis, semi-minor axis and specular distance in metres</td></tr>
+            <tr><td>fresnel_map(tracks, height)</td><td>Zone footprints along satellite tracks, one per 10° × 10° cell</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="license">
+  <div class="wrap">
+    <div class="margin"><span class="label">License</span><span class="mono">PolyForm Noncommercial 1.0.0</span></div>
+    <div class="body">
+      <header>
+        <h2>Free for science. Licensed for business.</h2>
+        <p>From 1.0, geoveil-mp is source-available under PolyForm Noncommercial 1.0.0 with an attribution term.</p>
+      </header>
+      <div class="terms">
+        <div class="term">
+          <span class="label">Non-commercial use</span>
+          <h3>Free, with credit</h3>
+          <ul>
+            <li>Research, teaching and personal projects.</li>
+            <li>Universities, public research bodies, charities and government agencies.</li>
+            <li>Credit "geoveil-mp by Miluta Dulea-Flueras" with a link to the repository, and cite it in publications.</li>
+          </ul>
+        </div>
+        <div class="term paid">
+          <span class="label">Commercial use</span>
+          <h3>Ask for a license</h3>
+          <p>Products, paid services and work done for a company need a separate commercial license. Write to:</p>
+          <div class="mail"><span id="mail">miluta.flueras@cartografie.ro</span><button class="copy" type="button" data-copy="miluta.flueras@cartografie.ro">Copy</button></div>
+        </div>
+      </div>
+      <p class="fineprint">Versions 0.2.1 and earlier remain available under the MIT license. The full terms are in the <a href="https://github.com/miluta7/geoveil-mp/blob/main/LICENSE">LICENSE</a> file.</p>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="cite">
+  <div class="wrap">
+    <div class="margin"><span class="label">Citation</span><span class="mono">BibTeX</span></div>
+    <div class="body">
+      <div>
+        <div class="tabs"><span class="tabname">geoveil_mp.bib</span><button class="copy" type="button" data-copy-from="bib" style="margin-left:auto;color:var(--ink);border-color:var(--rule)">Copy</button></div>
+<pre class="code" id="bib">@software{geoveil_mp,
+  author  = {Dulea-Flueras, Miluta},
+  title   = {geoveil-mp: GNSS Code Multipath Analysis Library},
+  year    = {2026},
+  version = {1.0.0},
+  url     = {https://github.com/miluta7/geoveil-mp},
+  license = {PolyForm-Noncommercial-1.0.0}
+}</pre>
+      </div>
+      <p class="fineprint">Method: Hunegnaw, A.; Teferle, F.N. Evaluation of the Multipath Environment Using Electromagnetic-Absorbing Materials at Continuous GNSS Stations. <i>Sensors</i> 2022, 22, 3384. Wavelets: Torrence, C.; Compo, G.P. A Practical Guide to Wavelet Analysis. <i>Bull. Amer. Meteor. Soc.</i> 1998, 79, 61–78.</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>geoveil-mp is built by Miluta Dulea-Flueras. Part of the GeoVeil suite with <a href="https://github.com/miluta7/geoveil-cn0">geoveil-cn0</a> for signal quality, jamming and spoofing detection.</span>
+    <nav aria-label="Links">
+      <a href="https://github.com/miluta7/geoveil-mp">GitHub</a>
+      <a href="https://pypi.org/project/geoveil-mp/">PyPI</a>
+      <a href="https://github.com/miluta7/geoveil-mp/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://batch.geoveil-rinex.eu">Platform</a>
+    </nav>
+  </div>
+</footer>
+
+<dialog id="lightbox" aria-label="Chart preview">
+  <figure>
+    <img id="lb-img" src="" alt="">
+    <figcaption><span id="lb-cap"></span><button type="button" id="lb-close">Close</button></figcaption>
+  </figure>
+</dialog>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const C = 299792458;
+  const WAVELENGTH = { L1: C / 1575.42e6, L2: C / 1227.60e6, L5: C / 1176.45e6 };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Same formula as geoveil_mp.fresnel_zone (article eq. 6)
+  function fresnel(elDeg, h, lam) {
+    const th = Math.max(elDeg, 0.5) * Math.PI / 180, s = Math.sin(th);
+    const b = Math.sqrt(lam * h / s + (lam / (2 * s)) ** 2);
+    return { a: b / s, b, d: h / Math.tan(th) };
+  }
+
+  // Illustrative tracks for a mid-latitude northern site: passes that culminate
+  // in the north stay low, so the northern sky has a hole at high elevation.
+  function rand(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
+  const tracks = (() => {
+    const r = rand(20251231), ids = ["G05", "G13", "G15", "G24", "G29", "R02", "R08", "R17", "R23", "E03", "E11", "E19", "E25", "E33", "G18", "R12"];
+    return ids.map((id) => {
+      const culm = r() * 360, north = culm > 300 || culm < 60;
+      const elMax = north ? 14 + r() * 24 : 32 + r() * 54;
+      const half = 70 + r() * 45, pts = [];
+      for (let i = 0; i <= 120; i++) {
+        const t = i / 120;
+        pts.push({ az: ((culm - half + 2 * half * t) % 360 + 360) % 360, el: elMax * Math.sin(Math.PI * t) });
+      }
+      return { id, pts, elMax };
+    });
+  })();
+  const focus = tracks.reduce((a, b) => (b.elMax > a.elMax ? b : a));
+
+  const MIN_EL = 10;
+  function stamps(h, lam) {
+    const out = [];
+    for (const tr of tracks) {
+      const seen = new Set();
+      for (const p of tr.pts) {
+        if (p.el < MIN_EL) continue;
+        const key = Math.floor(p.az / 10) + ":" + Math.floor(p.el / 10);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ ...p, z: fresnel(p.el, h, lam) });
+      }
+    }
+    return out;
+  }
+
+  function niceStep(x) {
+    const p = 10 ** Math.floor(Math.log10(x)), m = x / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+  }
+  const tok = () => {
+    const cs = getComputedStyle(document.documentElement), g = (n) => cs.getPropertyValue(n).trim();
+    return { ink: g("--ink"), ink2: g("--ink-2"), rule: g("--rule"), panel: g("--panel"), direct: g("--direct"), reflect: g("--reflect"), el: [g("--el1"), g("--el2"), g("--el3"), g("--el4")] };
+  };
+  const elColor = (T, el) => T.el[el < 15 ? 0 : el < 30 ? 1 : el < 60 ? 2 : 3];
+  function withAlpha(hex, a) {
+    let m = hex.replace("#", "");
+    if (m.length === 3) m = [...m].map((c) => c + c).join("");
+    const n = parseInt(m, 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+  const MONO = '11px "JetBrains Mono", ui-monospace, monospace';
+
+  function sizeCanvas(cv) {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, W: r.width, H: r.height };
+  }
+
+  const state = { h: 2, el: 15, band: "L1", phase: 0.5 };
+  const plan = $("#plan"), profile = $("#profile");
+
+  function drawPlan() {
+    const { ctx, W, H } = sizeCanvas(plan), T = tok();
+    const lam = WAVELENGTH[state.band], list = stamps(state.h, lam);
+    const z10 = fresnel(MIN_EL, state.h, lam);
+    const step = niceStep((z10.d + z10.a) / 4);
+    const Rm = Math.ceil((z10.d + z10.a) / step) * step;
+    const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 22, k = R / Rm;
+    ctx.clearRect(0, 0, W, H);
+
+    // range rings
+    ctx.font = MONO; ctx.textBaseline = "middle";
+    for (let r = step; r <= Rm + 1e-9; r += step) {
+      ctx.beginPath(); ctx.arc(cx, cy, r * k, 0, 2 * Math.PI);
+      ctx.strokeStyle = T.rule; ctx.lineWidth = r >= Rm - 1e-9 ? 1.4 : 1; ctx.setLineDash(r >= Rm - 1e-9 ? [] : [2, 4]); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle = T.ink2; ctx.textAlign = "left";
+      ctx.fillText(`${+r.toFixed(1)} m`, cx + 4, cy - r * k + 8);
+    }
+    ctx.fillStyle = T.ink; ctx.font = '600 12px "Archivo", sans-serif'; ctx.textAlign = "center";
+    ctx.fillText("N", cx, cy - R - 12); ctx.fillText("S", cx, cy + R + 12);
+    ctx.fillText("E", cx + R + 12, cy); ctx.fillText("W", cx - R - 12, cy);
+
+    // zones, clipped to the outer ring
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.clip();
+    const drawZone = (p, z, emph) => {
+      const az = p.az * Math.PI / 180;
+      const x = cx + Math.sin(az) * z.d * k, y = cy - Math.cos(az) * z.d * k;
+      ctx.beginPath(); ctx.ellipse(x, y, Math.max(z.a * k, 0.8), Math.max(z.b * k, 0.8), az - Math.PI / 2, 0, 2 * Math.PI);
+      const col = elColor(T, p.el);
+      ctx.fillStyle = withAlpha(col, emph ? 0.45 : p.el < 15 ? 0.1 : 0.16); ctx.fill();
+      ctx.strokeStyle = emph ? T.ink : withAlpha(col, 0.85); ctx.lineWidth = emph ? 1.6 : 0.9; ctx.stroke();
+    };
+    list.sort((a, b) => a.el - b.el).forEach((p) => drawZone(p, p.z, false));
+
+    // specular ring for the selected elevation
+    const zs = fresnel(state.el, state.h, lam);
+    ctx.beginPath(); ctx.arc(cx, cy, zs.d * k, 0, 2 * Math.PI);
+    ctx.strokeStyle = T.direct; ctx.lineWidth = 1.4; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+
+    // moving satellite on the focus track
+    const pts = focus.pts.filter((p) => p.el >= MIN_EL);
+    const p = pts[Math.min(pts.length - 1, Math.floor(state.phase * pts.length))];
+    drawZone(p, fresnel(p.el, state.h, lam), true);
+    ctx.restore();
+
+    // antenna
+    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 2 * Math.PI); ctx.fillStyle = T.ink; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 8, 0, 2 * Math.PI); ctx.strokeStyle = T.ink; ctx.lineWidth = 1; ctx.stroke();
+
+    // label for the moving satellite
+    ctx.font = MONO; ctx.fillStyle = T.ink; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(`${focus.id}  el ${p.el.toFixed(0)}°`, 8, H - 8);
+    ctx.fillStyle = T.direct; ctx.textAlign = "right";
+    ctx.fillText(`d at ${state.el}° = ${zs.d.toFixed(2)} m`, W - 8, H - 8);
+  }
+
+  function drawProfile() {
+    const { ctx, W, H } = sizeCanvas(profile), T = tok();
+    const lam = WAVELENGTH[state.band], z = fresnel(state.el, state.h, lam);
+    const th = Math.max(state.el, 0.5) * Math.PI / 180;
+    const padL = 78, padR = 22, padT = 16, padB = 30;
+    const spanX = Math.max(z.d + z.a, state.h * 0.6) * 1.08;
+    const k = Math.min((W - padL - padR) / spanX, (H - padT - padB) / (state.h * 1.15));
+    const gy = H - padB, ax = padL, ay = gy - state.h * k;
+    const X = (m) => ax + m * k;
+    ctx.clearRect(0, 0, W, H);
+
+    // ground with survey hatching
+    ctx.strokeStyle = T.ink; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(8, gy); ctx.lineTo(W - 8, gy); ctx.stroke();
+    ctx.strokeStyle = T.rule; ctx.lineWidth = 1;
+    for (let x = 12; x < W - 8; x += 9) { ctx.beginPath(); ctx.moveTo(x, gy + 1); ctx.lineTo(x - 6, gy + 7); ctx.stroke(); }
+
+    // first Fresnel zone on the ground
+    const x0 = Math.max(X(z.d - z.a), 8), x1 = Math.min(X(z.d + z.a), W - 8);
+    ctx.fillStyle = withAlpha(T.reflect, 0.22); ctx.fillRect(x0, gy - 5, x1 - x0, 5);
+    ctx.fillStyle = T.reflect; ctx.fillRect(x0, gy - 1.5, x1 - x0, 3);
+
+    // rays: the incoming wavefront arrives from the right at angle θ
+    const L = W * 2, dx = Math.cos(th), dy = -Math.sin(th);
+    const sx = X(z.d);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = T.direct; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + dx * L, ay + dy * L); ctx.stroke();
+    ctx.strokeStyle = T.reflect; ctx.beginPath(); ctx.moveTo(sx + dx * L, gy + dy * L); ctx.lineTo(sx, gy); ctx.lineTo(ax, ay); ctx.stroke();
+
+    // angle arc at the specular point
+    ctx.strokeStyle = T.ink2; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(sx, gy, 18, -th, 0); ctx.stroke();
+    ctx.font = MONO; ctx.fillStyle = T.ink2; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText("θ", sx + 22, gy - 8);
+
+    // mast and antenna
+    ctx.strokeStyle = T.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ax, gy); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.fillStyle = T.ink; ctx.fillRect(ax - 9, ay - 1, 18, 3);
+    ctx.beginPath(); ctx.arc(ax, ay - 1, 6, Math.PI, 2 * Math.PI); ctx.fill();
+
+    // height dimension
+    ctx.strokeStyle = T.ink2; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ax - 22, gy); ctx.lineTo(ax - 22, ay); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax - 26, gy); ctx.lineTo(ax - 18, gy); ctx.moveTo(ax - 26, ay); ctx.lineTo(ax - 18, ay); ctx.stroke();
+    ctx.textAlign = "right"; ctx.fillStyle = T.ink;
+    ctx.fillText(`h ${state.h.toFixed(1)}`, ax - 28, (gy + ay) / 2);
+
+    // distance labels under the ground
+    ctx.textBaseline = "top"; ctx.textAlign = "center"; ctx.fillStyle = T.reflect;
+    ctx.fillText(`2a = ${(2 * z.a).toFixed(2)} m`, Math.min(Math.max((x0 + x1) / 2, 60), W - 60), gy + 12);
+    ctx.fillStyle = T.ink2; ctx.textAlign = "left";
+    ctx.fillText("antenna", 8, gy + 12);
+  }
+
+  function update() {
+    const lam = WAVELENGTH[state.band], z = fresnel(state.el, state.h, lam);
+    $("#h-out").textContent = `${state.h.toFixed(1)} m`;
+    $("#el-out").textContent = `${state.el}°`;
+    $("#ro-a").innerHTML = `${z.a.toFixed(3)} <small>m</small>`;
+    $("#ro-b").innerHTML = `${z.b.toFixed(3)} <small>m</small>`;
+    $("#ro-d").innerHTML = `${z.d.toFixed(3)} <small>m</small>`;
+    const wl = state.band === "L1" ? "" : `, wavelength=${lam.toFixed(4)}`;
+    $("#echo-call").textContent = `gm.fresnel_zone(${state.el.toFixed(1)}, ${state.h.toFixed(1)}${wl})`;
+    $("#echo-ret").textContent = `# → (${z.a.toFixed(3)}, ${z.b.toFixed(3)}, ${z.d.toFixed(3)})`;
+    drawPlan(); drawProfile();
+  }
+
+  $("#h").addEventListener("input", (e) => { state.h = +e.target.value; update(); });
+  $("#el").addEventListener("input", (e) => { state.el = +e.target.value; update(); });
+  document.querySelectorAll('input[name="band"]').forEach((r) => r.addEventListener("change", (e) => { state.band = e.target.value; update(); }));
+
+  const redraw = () => { drawPlan(); drawProfile(); };
+  new ResizeObserver(redraw).observe(plan.parentElement);
+  new ResizeObserver(redraw).observe(profile.parentElement);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+  new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
+  update();
+
+  if (!reduceMotion) {
+    let t0 = null;
+    const tick = (t) => {
+      if (t0 === null) t0 = t;
+      state.phase = ((t - t0) / 14000 + 0.5) % 1;
+      if (!document.hidden) drawPlan();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // copy buttons
+  document.querySelectorAll(".copy").forEach((btn) => btn.addEventListener("click", () => {
+    const text = btn.dataset.copy ?? document.getElementById(btn.dataset.copyFrom).textContent;
+    const done = () => { const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1400); };
+    const fallback = () => {
+      const el = btn.dataset.copy ? btn.previousElementSibling : document.getElementById(btn.dataset.copyFrom);
+      const range = document.createRange(); range.selectNodeContents(el);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      btn.textContent = "Selected"; setTimeout(() => (btn.textContent = "Copy"), 1400);
+    };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  }));
+
+  // code tabs
+  const tabs = document.querySelectorAll('[role="tab"]');
+  tabs.forEach((tab) => tab.addEventListener("click", () => {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute("aria-selected", on); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+  }));
+  document.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const list = [...tabs], i = list.indexOf(document.activeElement);
+    const next = list[(i + (e.key === "ArrowRight" ? 1 : list.length - 1)) % list.length];
+    next.focus(); next.click();
+  });
+
+  // lightbox
+  const lb = $("#lightbox");
+  document.querySelectorAll(".shot .frame").forEach((b) => b.addEventListener("click", () => {
+    $("#lb-img").src = b.dataset.full;
+    $("#lb-img").alt = b.querySelector("img").alt;
+    $("#lb-cap").textContent = b.closest("figure").querySelector("figcaption").textContent;
+    if (lb.showModal) lb.showModal(); else window.open(b.dataset.full, "_blank");
+  }));
+  $("#lb-close").addEventListener("click", () => lb.close());
+  lb.addEventListener("click", (e) => { if (e.target === lb) lb.close(); });
+})();
+</script>
+</body>
+</html>

@@ -7,11 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-29
+
+First stable release. The API of 0.2.x is unchanged; everything below is additive
+apart from the license.
+
+### Added
+- **SNR wavelet analysis in Rust** (`analysis::advanced`, Hunegnaw & Teferle,
+  *Sensors* 2022, 22, 3384): Morlet continuous wavelet transform
+  (Torrence & Compo 1998 FFT formulation), lag-1 red-noise 95 % significance,
+  scale-averaged band power, interval-adaptive period bands, polynomial
+  δSNR detrending with automatic order selection, and arc splitting at gaps.
+- **First Fresnel zone mapping**: zone semi-axes and specular-point distance
+  per satellite track sample (article eq. 6), for any antenna height and
+  wavelength.
+- **Python API**: `analyze_snr_wavelets(obs)`, `scalogram()`, `morlet_cwt()`,
+  `band_power()`, `red_noise_significance()`, `period_bands()`,
+  `detrend_arc()`, `split_arcs()`, `fresnel_zone()`, `fresnel_map()` and the
+  `GPS_L1_WAVELENGTH` constant. Heavy calls release the GIL and run satellites
+  in parallel with rayon.
+- Numerically identical to the numpy reference used by the GeoVeil batch
+  platform (relative error below 1e-9 on wavelet power), and about 20x faster
+  on a 1 Hz, 51-satellite hourly file.
+- CI now runs the Python test suite against the built wheel.
+
 ### Changed
 - **License changed from MIT to PolyForm Noncommercial 1.0.0** with an
   attribution term. Non-commercial use remains free with credit; commercial
-  use now requires a separate license. Releases up to and including the
-  previous version remain available under MIT.
+  use now requires a separate license. Releases up to and including 0.2.1
+  remain available under MIT.
+- Development status classifier raised to Production/Stable.
 
 ## [0.2.1] - 2026-07-03
 
