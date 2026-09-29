@@ -9,7 +9,7 @@
 [![PyPI downloads](https://img.shields.io/pypi/dm/geoveil-mp.svg)](https://pypi.org/project/geoveil-mp/)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-red.svg)](LICENSE)
 [![CI/CD](https://github.com/miluta7/geoveil-mp/actions/workflows/ci.yml/badge.svg)](https://github.com/miluta7/geoveil-mp/actions)
 
 <img src="docs/mp_rms_by_signal.svg" width="880" alt="Code multipath RMS by signal — real 24 h / 30 s multi-GNSS data">
@@ -196,7 +196,9 @@ geoveil-mp info --obs station.rnx
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) with an attribution term — see [LICENSE](LICENSE).
+
+Free for research, education, personal and other non-commercial use, provided you credit the author and cite the library (see Citation below). **Commercial use requires a separate license** — contact [miluta.flueras@cartografie.ro](mailto:miluta.flueras@cartografie.ro).
 
 ## Author
 
@@ -211,6 +213,6 @@ MIT — see [LICENSE](LICENSE).
   year    = {2026},
   version = {0.2.0},
   url     = {https://github.com/miluta7/geoveil-mp},
-  license = {MIT}
+  license = {PolyForm-Noncommercial-1.0.0}
 }
 ```
