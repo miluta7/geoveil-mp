@@ -84,3 +84,7 @@ htmlcov/
 *.html
 !docs/index.html
 !tests/data/**
+
+# Benchmark downloads and scratch output
+benchmarks/raw/
+!benchmarks/prep.json

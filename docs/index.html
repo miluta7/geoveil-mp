@@ -30,6 +30,9 @@
   --on-accent: #FFFFFF;
   --shot: #FFFFFF;
   --shot-filter: none;
+  --s-parse: #0891B2;
+  --s-mp: #4F46E5;
+  --s-wav: #E0569B;
   --code-bg: #0E1030;
   --code-fg: #E0E3FA;
   --code-dim: #7479A6;
@@ -56,7 +59,7 @@
     --paper: #090B18; --panel: #10132A; --ink: #E6E8F7; --ink-2: #9CA1C9; --rule: #242849; --dot: #1D2142;
     --direct: #A5B4FC; --reflect: #22D3EE;
     --el1: #22D3EE; --el2: #60A5FA; --el3: #818CF8; --el4: #C4B5FD;
-    --accent-fill: #4F46E5; --on-accent: #FFFFFF;
+    --accent-fill: #4F46E5; --on-accent: #FFFFFF; --s-parse: #18A3C3; --s-mp: #6366F1; --s-wav: #D95A9B;
     --shot: #FFFFFF; --shot-filter: brightness(0.93);
     --code-bg: #0D1026; --code-fg: #E0E3FA; --code-dim: #7479A6;
     --code-kw: #A5B4FC; --code-str: #67E8F9; --code-num: #C4B5FD; --code-fn: #93C5FD;
@@ -67,7 +70,7 @@
   --paper: #090B18; --panel: #10132A; --ink: #E6E8F7; --ink-2: #9CA1C9; --rule: #242849; --dot: #1D2142;
   --direct: #A5B4FC; --reflect: #22D3EE;
   --el1: #22D3EE; --el2: #60A5FA; --el3: #818CF8; --el4: #C4B5FD;
-  --accent-fill: #4F46E5; --on-accent: #FFFFFF;
+  --accent-fill: #4F46E5; --on-accent: #FFFFFF; --s-parse: #18A3C3; --s-mp: #6366F1; --s-wav: #D95A9B;
   --shot: #FFFFFF; --shot-filter: brightness(0.93);
   --code-bg: #0D1026; --code-fg: #E0E3FA; --code-dim: #7479A6;
   --code-kw: #A5B4FC; --code-str: #67E8F9; --code-num: #C4B5FD; --code-fn: #93C5FD;
@@ -309,6 +312,41 @@ dialog img { width: 100%; max-height: 84vh; object-fit: contain; background: var
 dialog figcaption { color: var(--lb-fg); font-size: 0.95rem; display: flex; justify-content: space-between; gap: 16px; align-items: start; }
 dialog button { font: 650 0.8rem var(--f-display); background: var(--lb-fg); color: var(--lb-bg); border: 0; border-radius: 6px; padding: 8px 12px; cursor: pointer; flex: none; }
 
+/* benchmark chart */
+.bench { margin: 0; display: grid; gap: 14px; position: relative; }
+.bench-legend { display: flex; gap: 8px 20px; flex-wrap: wrap; font-family: var(--f-mono); font-size: 0.76rem; color: var(--ink-2); }
+.bench-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+.bench-chart { display: grid; gap: 14px; position: relative; }
+.brow { display: grid; grid-template-columns: 13.5rem minmax(0, 1fr); gap: 16px; align-items: center; }
+.brow .lab { font-family: var(--f-mono); font-size: 0.8rem; line-height: 1.35; color: var(--ink); }
+.brow .lab span { display: block; color: var(--ink-2); font-size: 0.72rem; }
+.btrack { position: relative; height: 24px; }
+.bbar { position: absolute; left: 0; top: 2px; height: 20px; display: flex; gap: 2px; }
+.bbar i { display: block; height: 100%; min-width: 2px; cursor: default; }
+.bbar i:last-child { border-radius: 0 4px 4px 0; }
+.bbar i:hover { filter: brightness(1.12); }
+.btot { position: absolute; top: 3px; font-family: var(--f-mono); font-size: 0.78rem; color: var(--ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.baxis { position: relative; height: 18px; margin-left: calc(13.5rem + 16px); }
+.baxis span { position: absolute; white-space: nowrap; font-family: var(--f-mono); font-size: 0.7rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.bgrid { position: absolute; inset: 0 0 0 calc(13.5rem + 16px); pointer-events: none; }
+.bgrid b { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule); }
+.bench-tip {
+  position: absolute; z-index: 5; pointer-events: none; padding: 8px 10px; border-radius: 8px;
+  background: var(--code-bg); color: var(--code-fg); font-family: var(--f-mono); font-size: 0.76rem; line-height: 1.45;
+  box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--ink) 60%, transparent); white-space: nowrap;
+}
+.callout { display: grid; gap: 6px; padding: 16px 20px; border-left: 3px solid var(--s-wav); background: var(--panel); border-radius: 0 10px 10px 0; max-width: 48rem; }
+.bench-table { font-size: 0.9rem; }
+.bench-table th, .bench-table td { padding-right: 9px; }
+.bench-table { font-size: 0.88rem; }
+.bench-table td { white-space: nowrap; }
+.bench-table td .sub { font-family: var(--f-mono); font-size: 0.72rem; color: var(--ink-2); }
+@media (max-width: 760px) {
+  .brow { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .baxis, .bgrid { margin-left: 0; left: 0; }
+  .bgrid { inset: 0; }
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 1020px) {
   .hero .wrap { grid-template-columns: minmax(0, 1fr); }
@@ -335,6 +373,7 @@ dialog button { font: 650 0.8rem var(--f-display); background: var(--lb-fg); col
     <a class="mark" href="#top"><b>geoveil-mp</b><span class="chip">v1.0.1</span></a>
     <nav aria-label="Sections">
       <a href="#new">What's new</a>
+      <a href="#speed">Speed</a>
       <a href="#platform">Platform</a>
       <a href="#pipeline">Method</a>
       <a href="#api">API</a>
@@ -361,7 +400,7 @@ dialog button { font: 650 0.8rem var(--f-display); background: var(--lb-fg); col
         <a class="btn" href="https://batch.geoveil-rinex.eu">Open the live platform</a>
       </div>
       <div class="facts" aria-label="Release facts">
-        <div><b>20×</b><span class="label">faster SNR wavelets</span></div>
+        <div><b>14–28×</b><span class="label">faster SNR wavelets</span></div>
         <div><b>1.8e-15</b><span class="label">max difference vs numpy</span></div>
         <div><b>10</b><span class="label">new Python functions</span></div>
       </div>
@@ -447,7 +486,47 @@ dialog button { font: 650 0.8rem var(--f-display); background: var(--lb-fg); col
             <tr><td>Largest relative difference in wavelet power</td><td class="num">reference</td><td class="num win">1.8 × 10⁻¹⁵</td></tr>
             <tr><td>Largest relative difference in detrended residuals</td><td class="num">reference</td><td class="num win">4.3 × 10⁻¹²</td></tr>
           </tbody>
-          <caption>Linux container, release build, same RINEX 3.04 file for both. Parity script and results are in the 1.0.0 pull request.</caption>
+          <caption>Linux container, release build, same RINEX 3.04 file for both, checked against the numpy implementation the GeoVeil platform used before 1.0.</caption>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="speed">
+  <div class="wrap">
+    <div class="margin"><span class="label">Speed</span><span class="mono">Intel Xeon E5-2620 v3 @ 2.40GHz · 12 threads</span></div>
+    <div class="body">
+      <header>
+        <h2>A station day in 2.0 seconds</h2>
+        <p>Wall-clock time for the full pipeline on public IGS files from 31 December 2025, measured with the geoveil-mp 1.0.1 wheel from PyPI on a 2014 server CPU. Parsing and multipath analysis run on one core. SNR wavelets use every core.</p>
+      </header>
+      <figure class="bench">
+        <div class="bench-legend" aria-hidden="true">
+          <span><i style="background:var(--s-parse)"></i>Parse</span>
+          <span><i style="background:var(--s-mp)"></i>Multipath and cycle slips</span>
+          <span><i style="background:var(--s-wav)"></i>SNR wavelets</span>
+        </div>
+        <div id="bench-chart" class="bench-chart" role="img" aria-label="Stacked bars of processing time per RINEX file type. The table below lists every value."></div>
+        <div id="bench-tip" class="bench-tip" hidden></div>
+        <figcaption>Seconds per file with all 12 threads, median of three runs. Hatanaka files are decompressed beforehand; the table lists that step.</figcaption>
+      </figure>
+      <div class="callout">
+        <span class="label">Stress test</span>
+        <p><b>24 hours at 1 Hz</b>: a 948 MB file with 86,400 epochs and 127 satellites takes <b>66 s</b> and peaks at <b>10.7 GB</b> of memory. Split high-rate days into hours to keep memory near 562 MB.</p>
+      </div>
+      <div class="measure">
+        <table class="bench-table">
+          <thead><tr><th>File</th><th>Epochs × sats</th><th>Hatanaka</th><th>Parse</th><th>Multipath</th><th>SNR wavelets</th><th>Total</th><th>1 thread</th><th>Peak memory</th><th>vs numpy</th></tr></thead>
+          <tbody>
+            <tr><td><b>RINEX 2.11 · 24 h · 30 s</b><br><span class="sub">ZIMM · Hatanaka + gzip · 5.4 MB</span></td><td class="num">2,880 × 32</td><td class="num">0.22 s</td><td class="num">0.15 s</td><td class="num">0.42 s</td><td class="num">0.07 s</td><td class="num win">0.64 s</td><td class="num">0.90 s</td><td class="num">129 MB</td><td class="num">18×</td></tr>
+            <tr><td><b>RINEX 3.02 · 24 h · 30 s</b><br><span class="sub">BOR1 · Hatanaka + gzip · 19.4 MB</span></td><td class="num">2,880 × 106</td><td class="num">0.69 s</td><td class="num">0.34 s</td><td class="num">1.47 s</td><td class="num">0.20 s</td><td class="num win">2.01 s</td><td class="num">3.43 s</td><td class="num">398 MB</td><td class="num">22×</td></tr>
+            <tr><td><b>RINEX 3.02 · 24 h · 30 s</b><br><span class="sub">BOR1 · gzip, read directly · 5.8 MB</span></td><td class="num">2,880 × 106</td><td class="num">–</td><td class="num">0.45 s</td><td class="num">1.75 s</td><td class="num">0.21 s</td><td class="num win">2.42 s</td><td class="num">3.59 s</td><td class="num">401 MB</td><td class="num">23×</td></tr>
+            <tr><td><b>RINEX 3.05 · 15 min · 1 Hz</b><br><span class="sub">BUCU · Hatanaka · 9.6 MB</span></td><td class="num">900 × 44</td><td class="num">0.30 s</td><td class="num">0.14 s</td><td class="num">0.44 s</td><td class="num">0.08 s</td><td class="num win">0.66 s</td><td class="num">0.98 s</td><td class="num">135 MB</td><td class="num">28×</td></tr>
+            <tr><td><b>RINEX 3.05 · 1 h · 1 Hz</b><br><span class="sub">BUCU · Hatanaka · 39.9 MB</span></td><td class="num">3,600 × 52</td><td class="num">1.18 s</td><td class="num">0.61 s</td><td class="num">1.94 s</td><td class="num">0.35 s</td><td class="num win">2.90 s</td><td class="num">4.57 s</td><td class="num">562 MB</td><td class="num">19×</td></tr>
+            <tr><td><b>RINEX 3.05 · 24 h · 1 Hz</b><br><span class="sub">BUCU · Hatanaka · 948.1 MB</span></td><td class="num">86,400 × 127</td><td class="num">28.4 s</td><td class="num">14.6 s</td><td class="num">46.4 s</td><td class="num">5.13 s</td><td class="num win">66.1 s</td><td class="num">96.3 s</td><td class="num">10.7 GB</td><td class="num">14×</td></tr>
+          </tbody>
+          <caption>Hatanaka: decompression to plain RINEX with the hatanaka Python package, not part of geoveil-mp. vs numpy: SNR wavelet stage against the numpy implementation the GeoVeil platform used before 1.0. Scripts and raw results are in the <a href="https://github.com/miluta7/geoveil-mp/tree/main/benchmarks">benchmarks folder</a>.</caption>
         </table>
       </div>
     </div>
@@ -912,6 +991,39 @@ a, b, dist = gm.<span class="f">fresnel_zone</span>(<span class="n">15.0</span>,
     };
     requestAnimationFrame(tick);
   }
+
+
+
+
+  // benchmark chart: stacked seconds per file, one linear scale
+  (() => {
+    const DATA = [{"label": "RINEX 2.11 · 24 h · 30 s", "sub": "ZIMM · Hatanaka + gzip", "parse": 0.155, "multipath": 0.42, "wavelets": 0.07, "total": 0.644}, {"label": "RINEX 3.02 · 24 h · 30 s", "sub": "BOR1 · Hatanaka + gzip", "parse": 0.338, "multipath": 1.471, "wavelets": 0.204, "total": 2.013}, {"label": "RINEX 3.02 · 24 h · 30 s", "sub": "BOR1 · gzip, read directly", "parse": 0.453, "multipath": 1.753, "wavelets": 0.21, "total": 2.416}, {"label": "RINEX 3.05 · 15 min · 1 Hz", "sub": "BUCU · Hatanaka", "parse": 0.136, "multipath": 0.442, "wavelets": 0.081, "total": 0.659}, {"label": "RINEX 3.05 · 1 h · 1 Hz", "sub": "BUCU · Hatanaka", "parse": 0.607, "multipath": 1.944, "wavelets": 0.347, "total": 2.897}];
+    const root = document.getElementById("bench-chart"), tip = document.getElementById("bench-tip");
+    const keys = [["parse", "Parse", "--s-parse"], ["multipath", "Multipath", "--s-mp"], ["wavelets", "SNR wavelets", "--s-wav"]];
+    const maxT = Math.max(...DATA.map((d) => d.parse + d.multipath + d.wavelets));
+    const step = maxT > 4 ? 1 : 0.5, top = Math.ceil((maxT * 1.12) / step) * step;
+    const pct = (v) => (100 * v) / top;
+    const ticks = []; for (let t = 0; t <= top + 1e-9; t += step) ticks.push(+t.toFixed(2));
+    root.innerHTML = `<div class="bgrid">${ticks.map((t) => `<b style="left:${pct(t)}%"></b>`).join("")}</div>` +
+      DATA.map((d, i) => {
+        const tot = d.total;
+        const segs = keys.map(([k, name, c]) => `<i data-row="${i}" data-k="${k}" style="flex:${d[k] / tot} 1 0;background:var(${c})"></i>`).join("");
+        return `<div class="brow"><div class="lab">${d.label}<span>${d.sub}</span></div><div class="btrack"><div class="bbar" style="width:${pct(tot)}%">${segs}</div><span class="btot" style="left:calc(${pct(tot)}% + 8px)">${tot.toFixed(2)} s</span></div></div>`;
+      }).join("") +
+      `<div class="baxis">${ticks.map((t, j) => `<span style="left:${pct(t)}%;transform:translateX(${j === 0 ? 0 : j === ticks.length - 1 ? -100 : -50}%)">${t} s</span>`).join("")}</div>`;
+    const fig = root.parentElement;
+    root.addEventListener("pointermove", (e) => {
+      const seg = e.target.closest("i[data-k]");
+      if (!seg) { tip.hidden = true; return; }
+      const d = DATA[+seg.dataset.row], k = keys.find((x) => x[0] === seg.dataset.k);
+      tip.innerHTML = `${d.label}<br>${k[1]}: <b>${d[k[0]].toFixed(2)} s</b> of ${d.total.toFixed(2)} s`;
+      tip.hidden = false;
+      const fr = fig.getBoundingClientRect();
+      const x = Math.min(e.clientX - fr.left + 14, fr.width - tip.offsetWidth - 4);
+      tip.style.left = `${Math.max(0, x)}px`; tip.style.top = `${e.clientY - fr.top + 14}px`;
+    });
+    root.addEventListener("pointerleave", () => { tip.hidden = true; });
+  })();
 
   // copy buttons
   document.querySelectorAll(".copy").forEach((btn) => btn.addEventListener("click", () => {

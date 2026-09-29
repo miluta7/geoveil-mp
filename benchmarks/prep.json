@@ -1,0 +1,35 @@
+{
+ "zimm3650.25o": {
+  "source": "zimm3650.25d.gz",
+  "compressed_bytes": 763433,
+  "decompress_s": 0.21830098099962925
+ },
+ "BOR100POL_R_20253650000_01D_30S_MO.rnx": {
+  "source": "BOR100POL_R_20253650000_01D_30S_MO.crx.gz",
+  "compressed_bytes": 2527564,
+  "decompress_s": 0.6911555609985953
+ },
+ "BOR100POL_R_20253650000_01D_30S_MO.rnx.gz": {
+  "source": "BOR100POL_R_20253650000_01D_30S_MO.rnx (gzip -6)",
+  "compressed_bytes": 5775207,
+  "decompress_s": null
+ },
+ "BUCU_15M_01S.rnx": {
+  "source": "BUCU00ROU_S_20253650000_15M_01S_MO.crx",
+  "compressed_bytes": 2073782,
+  "decompress_s": 0.29597917189551026
+ },
+ "BUCU_01H_01S.rnx": {
+  "source": "4 x 15M crx",
+  "compressed_bytes": 8625083,
+  "decompress_s": 1.183916687582041
+ },
+ "BUCU_01D_01S.rnx": {
+  "source": "96 x 15M crx",
+  "compressed_bytes": 208452855,
+  "decompress_s": 28.414000501968985
+ },
+ "_notes": {
+  "hr_files_with_different_obs_types": []
+ }
+}
