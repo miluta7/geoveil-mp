@@ -531,20 +531,17 @@ impl RinexObsReader {
             // Strip Windows CR
             let line = line.trim_end_matches('\r').to_string();
 
-            // Check for epoch header (starts with space and year)
-            if line.len() >= 26 && line.chars().nth(0) == Some(' ') {
-                // Check if it looks like an epoch header
-                let first_part = &line[1..3];
-                if let Ok(_year) = first_part.trim().parse::<i32>() {
-                    // Process previous epoch
-                    if epoch_started && !current_lines.is_empty() {
-                        if let Ok(epoch) = self.parse_epoch_block_v2(&current_lines, header) {
+            if is_epoch_line_v2(&line) {
+                // Process previous epoch
+                if epoch_started && !current_lines.is_empty() {
+                    if let Ok(epoch) = self.parse_epoch_block_v2(&current_lines, header) {
+                        if !is_event_flag(epoch.flag) {
                             epochs.push(epoch);
                         }
-                        current_lines.clear();
                     }
-                    epoch_started = true;
+                    current_lines.clear();
                 }
+                epoch_started = true;
             }
 
             if epoch_started {
@@ -555,7 +552,9 @@ impl RinexObsReader {
         // Process last epoch
         if !current_lines.is_empty() {
             if let Ok(epoch) = self.parse_epoch_block_v2(&current_lines, header) {
-                epochs.push(epoch);
+                if !is_event_flag(epoch.flag) {
+                    epochs.push(epoch);
+                }
             }
         }
 
@@ -740,6 +739,24 @@ impl RinexObsReader {
     }
 }
 
+/// RINEX 2 epoch record: ` yy mm dd hh mm ss.sssssss  f nnn` in fixed columns.
+/// Observation lines never match: their decimal points sit at columns 10, 26, ...
+fn is_epoch_line_v2(line: &str) -> bool {
+    let b = line.as_bytes();
+    b.len() >= 29
+        && b[0] == b' '
+        && [3, 6, 9, 12].iter().all(|&i| b[i] == b' ')
+        && b[2].is_ascii_digit()
+        && (b[1] == b' ' || b[1].is_ascii_digit())
+        && b[18] == b'.'
+}
+
+/// Epoch flags 2-5 mark special events (antenna moved, new site, header
+/// records, external event) and carry no observations.
+fn is_event_flag(flag: u8) -> bool {
+    (2..=5).contains(&flag)
+}
+
 /// Convenience function to read RINEX observation file
 pub fn read_rinex_obs<P: AsRef<Path>>(path: P) -> Result<ObservationData> {
     RinexObsReader::new().read(path)
@@ -785,5 +802,72 @@ mod tests {
         assert_eq!(header.glonass_slot_frq.get(&9), Some(&-2));
         assert_eq!(header.glonass_slot_frq.get(&10), Some(&-7));
         assert_eq!(header.glonass_slot_frq.get(&24), Some(&2));
+    }
+
+    #[test]
+    fn test_rinex2_epochs_with_wrapped_and_blank_obs_lines() {
+        // 13 observation types wrap onto 3 lines per satellite; a satellite
+        // with no L5 data leaves its third line blank (ZIMM, 2025-12-31).
+        let mut header = String::new();
+        let h = |text: &str, label: &str| format!("{text:<60}{label}\n");
+        header += &h("     2.11           OBSERVATION DATA    G", "RINEX VERSION / TYPE");
+        header += &h("ZIMM", "MARKER NAME");
+        header += &h("    13    C1    L1    D1    S1    P2    L2    D2    S2    C2", "# / TYPES OF OBSERV");
+        header += &h("          C5    L5    D5    S5", "# / TYPES OF OBSERV");
+        header += &h("    30.000", "INTERVAL");
+        header += &h("", "END OF HEADER");
+        let epoch = |sec: &str| {
+            format!(
+                " 25 12 31 00 00 {sec}  0  2G01G02\n\
+                 \x20 20291907.468   106634727.89509      -894.871          53.600    20291906.379\n\
+                 \x20 83091992.00549      -697.303          53.050    20291906.022    20291906.521\n\
+                 \x20 79629819.51409      -668.282          51.100\n\
+                 \x20 22230519.285   116822185.17809     -2348.105          50.900    22230516.125\n\
+                 \x20 91030286.26148     -1829.693          46.200\n\
+                 \n"
+            )
+        };
+        let text = header + &epoch(" 0.0000000") + &epoch("30.0000000");
+        let data = RinexObsReader::new()
+            .parse_reader(std::io::BufReader::new(text.as_bytes()))
+            .unwrap();
+        assert_eq!(data.epochs.len(), 2);
+        let g01 = Satellite::parse("G01").unwrap();
+        let g02 = Satellite::parse("G02").unwrap();
+        for e in &data.epochs {
+            assert_eq!(e.satellites.len(), 2);
+            let c1 = SignalCode::new(ObservationType::Code, 1, 'C');
+            assert!((e.satellites[&g01][&c1].value - 20291907.468).abs() < 1e-6);
+            assert!((e.satellites[&g02][&c1].value - 22230519.285).abs() < 1e-6);
+        }
+        assert!((data.epochs[1].epoch.second - 30.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_glonass_nominal_channels_match_header_table() {
+        use crate::utils::constants::frequencies::glonass::nominal_channel;
+        let reader = RinexObsReader::new();
+        let mut header = Header::default();
+        for line in [
+            " 24 R01  1 R02 -4 R03  5 R04  6 R05  1 R06 -4 R07  5 R08  6 ",
+            "    R09 -2 R10 -7 R11  0 R12 -1 R13 -2 R14 -7 R15  0 R16 -1 ",
+            "    R17  4 R18 -3 R19  3 R20  2 R21  4 R22 -3 R23  3 R24  2 ",
+        ] {
+            reader.parse_glonass_slot_frq(line, &mut header);
+        }
+        for slot in 1..=24 {
+            assert_eq!(nominal_channel(slot), header.glonass_slot_frq.get(&slot).copied(), "slot {slot}");
+        }
+        assert_eq!(nominal_channel(0), None);
+        assert_eq!(nominal_channel(27), None);
+    }
+
+    #[test]
+    fn test_rinex2_epoch_line_detection() {
+        assert!(is_epoch_line_v2(" 25 12 31 00 00  0.0000000  0 11G01G02G03"));
+        assert!(is_epoch_line_v2(" 08  1  1  0  0 30.0000000  0  8G01G02"));
+        assert!(!is_epoch_line_v2("  20291907.468   106634727.89509      -894.871"));
+        assert!(!is_epoch_line_v2(" 106634727.895 9     -894.871          53.600"));
+        assert!(!is_epoch_line_v2(""));
     }
 }

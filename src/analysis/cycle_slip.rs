@@ -176,7 +176,7 @@ impl CycleSlipDetector {
 
     fn fcn_for(&self, sat: &Satellite) -> Option<i8> {
         if sat.system == GnssSystem::Glonass {
-            Some(self.glonass_fcn.get(&sat.prn).copied().unwrap_or(0))
+            Some(self.glonass_fcn.get(&sat.prn).copied().or_else(|| crate::utils::constants::frequencies::glonass::nominal_channel(sat.prn)).unwrap_or(0))
         } else {
             None
         }

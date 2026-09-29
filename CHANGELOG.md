@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-29
+
+### Fixed
+- **RINEX 2 observation files are parsed correctly.** Epoch records were
+  detected by checking only columns 2-3 for a number, so almost every
+  observation line started a new "epoch" and files came back with no
+  satellites. Epoch lines are now matched on their fixed-column layout.
+  A daily 30 s RINEX 2.11 file now reads as 2,880 epochs instead of 78,590.
+- **GLONASS multipath without a `GLONASS SLOT / FRQ #` header record.**
+  RINEX 2 and early 3.0x headers carry no frequency channels, so every
+  satellite fell back to channel 0 and GLONASS MP came out near 100 m.
+  The nominal slot-to-channel table is now used when the header has none;
+  header values still take precedence.
+- Event epochs (flags 2 to 5) in RINEX 2 files no longer produce empty epochs.
+
 ## [1.0.0] - 2026-09-29
 
 First stable release. The API of 0.2.x is unchanged; everything below is additive

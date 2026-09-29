@@ -362,7 +362,7 @@ impl MultipathAnalyzer {
     ) -> Option<(SignalCode, SignalCode, f64, f64)> {
         let sys_char = sat.system.to_char();
         let fcn = if sat.system == GnssSystem::Glonass {
-            Some(self.glonass_fcn.get(&sat.prn).copied().unwrap_or(0))
+            Some(self.glonass_fcn.get(&sat.prn).copied().or_else(|| crate::utils::constants::frequencies::glonass::nominal_channel(sat.prn)).unwrap_or(0))
         } else {
             None
         };

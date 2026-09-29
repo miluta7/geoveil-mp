@@ -248,7 +248,7 @@ Free for research, education, personal and other non-commercial use, provided yo
   author  = {Dulea-Flueras, Miluta},
   title   = {geoveil-mp: GNSS Code Multipath Analysis Library},
   year    = {2026},
-  version = {1.0.0},
+  version = {1.0.1},
   url     = {https://github.com/miluta7/geoveil-mp},
   license = {PolyForm-Noncommercial-1.0.0}
 }

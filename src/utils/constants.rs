@@ -89,6 +89,14 @@ pub mod frequencies {
         pub const G2_STEP: f64 = 437_500.0;
         /// G3 (CDMA L3)
         pub const G3: f64 = 1_202_025_000.0;
+
+        /// Nominal frequency channel of orbital slots 1-24 (antipodal slots
+        /// share a channel). Used only when the RINEX header has no
+        /// GLONASS SLOT / FRQ # record, as in RINEX 2 and early 3.0x files.
+        pub fn nominal_channel(slot: u32) -> Option<i8> {
+            const FCN: [i8; 24] = [1, -4, 5, 6, 1, -4, 5, 6, -2, -7, 0, -1, -2, -7, 0, -1, 4, -3, 3, 2, 4, -3, 3, 2];
+            FCN.get(slot.checked_sub(1)? as usize).copied()
+        }
         
         /// Get G1 frequency for a given channel number (-7 to +6)
         pub fn g1_frequency(channel: i8) -> f64 {
